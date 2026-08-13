@@ -59,19 +59,73 @@ directly. Scene selection is now made on that, never on metadata.
 
 ## F2 — dNBR area totals over a mixed landscape are contaminated by agricultural harvest
 
-**Holds.** The AOI contains substantial farmland around the massif. Between 10 and 20 July,
-fields were harvested, which strips green vegetation and produces exactly the NIR-down /
-SWIR-up signature that dNBR is built to detect. In the massif-wide dNBR render these appear as
-sharply rectangular high-dNBR patches with field boundaries — visually unmistakable as
-agriculture and numerically indistinguishable from low-severity burn.
+**Holds, and now quantified against IGN's RPG declared-parcel register** (7,268 parcels,
+27,578 ha of farmland in the AOI, including 1,190 winter-wheat and 1,202 barley parcels — all
+harvested in July).
 
-This is most of the gap between the 3,711 ha (≥0.10) figure and EMS's ~2,000 ha. It is *not*
-evidence that the Key & Benson low-severity threshold is miscalibrated for this fuel type, and
-reading it that way would be a mistake.
+| Threshold | Total | In forest | On farmland | Neither |
+|---|---|---|---|---|
+| dNBR ≥ 0.10 | 3,711 ha | 1,732 ha | **1,867 ha (50%)** | 112 ha |
+| dNBR ≥ 0.27 | 1,136 ha | 994 ha | 118 ha (10%) | 24 ha |
 
-**Next step:** restrict area statistics to forest before comparing against EMS. A land-cover
-mask, or simply a pre-fire NDVI/NBR condition, would separate them. Until then only the ≥0.27
-figure should be quoted, and shape — not just magnitude — should be used to sanity-check.
+**Half the ≥0.10 "burned area" is harvest.** At ≥0.27 the contamination drops to 10%, which
+justifies the earlier decision to quote only that figure — but does not make it clean.
+
+Forest-only burned area at ≥0.27 is **994 ha**; restricted to inside the fire footprint,
+**976 ha**. The derived fire footprint is **1,439 ha** against EMS's reported ~2,000 ha.
+
+⚠️ That remaining gap is **not resolved**. It is plausibly definitional — a rapid-mapping
+perimeter is the area *affected*, which is larger than the area above a severity threshold —
+but that is a hypothesis, and settling it needs the EMSR894 vectors. Do not present 976 ha and
+2,000 ha as measuring the same thing.
+
+---
+
+## F5 — Burn severity by fuel type, and a refuted prediction about RdNBR
+
+**Refuted, my own stated hypothesis.** BD Forêt V2 supplies species polygons for the whole
+massif, so the fuel-bias argument could be measured rather than asserted. Restricted to inside
+the fire footprint:
+
+| Fuel (`tfv_g11`) | ha in fire | % burned | dNBR median | RdNBR median |
+|---|---|---|---|---|
+| Lande (heath) | 58 | **95.2** | **0.486** | **0.917** |
+| Forêt ouverte mixte | 15 | 65.4 | 0.356 | 0.591 |
+| Forêt ouverte conifères | 23 | 65.3 | 0.352 | 0.620 |
+| Forêt fermée feuillus | 183 | 72.2 | 0.349 | 0.455 |
+| Forêt fermée mixte | 389 | 67.7 | 0.338 | 0.461 |
+| Forêt fermée conifères | 746 | 67.1 | **0.319** | 0.448 |
+
+By species: beech is the least affected closed forest (47.2% burned, dNBR 0.256), which is
+ecologically sensible — moist, deeply shaded, little understory fuel. Scots pine is the single
+largest burned fuel at 604 ha.
+
+**What I predicted, in `burn.py` and in conversation:** dNBR being an absolute difference, it
+should read *low* over sparse fuel like heath (less to lose) and *high* over dense closed pine,
+and RdNBR should compress that gap.
+
+**Both halves are wrong.** Heath reads *highest* by a wide margin, closed conifer *lowest*, and
+RdNBR **widens** the spread (0.917 vs 0.448) instead of closing it.
+
+**Likely cause, and it is a confound rather than a discovery about fire:** Calluna heath at
+Fontainebleau sits directly on open sandstone and sand. It burns to complete consumption —
+95.2% of it, the highest of any class — exposing bare bright substrate. Sand is highly
+reflective in SWIR, which drives NBR down hard and dNBR up. Closed pine at 10 m still contains
+standing charred trunks and partially green crowns after a surface fire, so the pixel signal is
+mixed.
+
+So over heath the index is substantially measuring **the substrate revealed**, not the energy
+released. RdNBR amplifies this because pre-fire heath has a modest NBR, shrinking the
+denominator.
+
+**Consequence:** neither index should be read as comparable severity *across* fuel types on
+this massif without substrate correction, and the Key & Benson classes — calibrated on North
+American conifer — are least trustworthy exactly where the signal is strongest. Within a single
+fuel type the ranking is still usable.
+
+General form of the trap, and the same shape as F4: **an index validated on one ecosystem
+carries that ecosystem's substrate assumptions**, and the failure appears as an unusually strong
+signal rather than a weak one — which reads as success.
 
 ---
 

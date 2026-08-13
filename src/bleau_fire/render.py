@@ -130,6 +130,75 @@ def plot_dnbr(delta: np.ndarray, grid: Grid, out: Path, *,
     return out
 
 
+FUEL_COLOURS: dict[str, str] = {
+    "Forêt fermée feuillus": "#4E8C4A",
+    "Forêt fermée conifères": "#1F5B4E",
+    "Forêt fermée mixte": "#7FA85C",
+    "Forêt ouverte feuillus": "#A8C97F",
+    "Forêt ouverte conifères": "#6E9A88",
+    "Forêt ouverte mixte": "#BFD6A0",
+    "Forêt fermée sans couvert arboré": "#C9BFA8",
+    "Lande": "#C98F4E",
+    "Peupleraie": "#9AB8D4",
+}
+
+
+def plot_landcover(classes, labels, grid: Grid, out: Path, *,
+                   footprint=None, paths=None, gdf: gpd.GeoDataFrame | None = None,
+                   title: str = "",
+                   zoom: tuple[float, float, float, float] | None = None) -> Path:
+    """Fuel type from BD Forêt, with the fire footprint outlined and the path network drawn.
+
+    The fire is shown as an *outline* rather than a fill so the fuel underneath stays readable —
+    the question this map answers is "what was burning", not "where was the fire".
+    """
+    window = _extent_window(grid, zoom)
+    arr = classes[window[2]:window[3], window[0]:window[1]] if window else classes
+
+    present = [labels[c] for c in sorted(labels) if (classes == c).any()]
+    cmap = ListedColormap([FUEL_COLOURS.get(lb, "#B9B2A4") for lb in present])
+    remap = np.full(arr.shape, -1, dtype="int16")
+    for new, lb in enumerate(present):
+        old = next(c for c, v in labels.items() if v == lb)
+        remap[arr == old] = new
+
+    fig, ax = plt.subplots(figsize=(13, 13 * arr.shape[0] / arr.shape[1]))
+    ax.imshow(np.ma.masked_less(remap, 0), cmap=cmap, vmin=0, vmax=max(len(present) - 1, 1),
+              interpolation="nearest")
+
+    if paths is not None and len(paths):
+        pl = paths.to_crs(grid.crs)
+        inv = ~grid.transform
+        for geom in pl.geometry:
+            if geom is None or geom.is_empty:
+                continue
+            lines = geom.geoms if geom.geom_type == "MultiLineString" else [geom]
+            for ln in lines:
+                xs, ys = ln.xy
+                cc, rr = inv * (np.asarray(xs), np.asarray(ys))
+                if window:
+                    cc, rr = cc - window[0], rr - window[2]
+                ax.plot(cc, rr, color="#3A322A", linewidth=0.28, alpha=0.5, zorder=2)
+
+    if footprint is not None:
+        fp = footprint[window[2]:window[3], window[0]:window[1]] if window else footprint
+        ax.contour(fp.astype(float), levels=[0.5], colors="#B0180A", linewidths=1.5, zorder=5)
+
+    _overlay(ax, gdf, grid, window, edge="#00E0FF", size=8)
+    ax.legend(handles=[mpatches.Patch(color=FUEL_COLOURS.get(lb, "#B9B2A4"), label=lb)
+                       for lb in present]
+                      + [mpatches.Patch(color="#B0180A", label="fire footprint")],
+              loc="upper right", fontsize=7, framealpha=0.92)
+    ax.set_title(title or out.stem, fontsize=11)
+    ax.set_xlim(0, arr.shape[1]); ax.set_ylim(arr.shape[0], 0)
+    ax.set_xticks([]); ax.set_yticks([])
+    plt.tight_layout()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    plt.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close()
+    return out
+
+
 def plot_severity(classes: np.ndarray, grid: Grid, out: Path, *,
                   gdf: gpd.GeoDataFrame | None = None, title: str = "",
                   zoom: tuple[float, float, float, float] | None = None) -> Path:

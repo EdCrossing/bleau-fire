@@ -14,7 +14,7 @@ import json
 
 import numpy as np
 
-from bleau_fire import burn, climbing, features, render
+from bleau_fire import burn, climbing, features, ign, landcover, render
 from bleau_fire.config import (
     AOI, MASK_CLASSES, OUT_DIR, POST_SCENE, PRE_SCENE, build_grid,
 )
@@ -213,6 +213,97 @@ def cmd_sample(args):
     print(f"\n[out] {csv}\n[out] {gj}")
 
 
+def cmd_vectors(args):
+    """Fetch the IGN land-cover layers and the OSM walking network."""
+    for key in ("bdforet", "rpg", "roads"):
+        try:
+            g = ign.fetch_layer(key, refresh=args.refresh)
+            print(f"  -> {key}: {len(g)} features")
+        except Exception as exc:
+            print(f"  !! {key}: {type(exc).__name__}: {exc}")
+    try:
+        paths = ign.fetch_paths(refresh=args.refresh)
+        print(f"  -> paths: {len(paths)} ways")
+    except Exception as exc:
+        print(f"  !! paths: {type(exc).__name__}: {exc}")
+
+
+def cmd_forest(args):
+    """Cross burn severity against BD Foret fuel types and RPG farmland."""
+    grid = build_grid()
+    pixel_area = grid.resolution ** 2
+    pre_arrays, pre_meta = read_scene(scene_path(args.pre))
+    post_arrays, post_meta = read_scene(scene_path(args.post))
+
+    nbr_pre = burn.nbr(pre_arrays["nir"], pre_arrays["swir22"])
+    delta = burn.dnbr(nbr_pre, burn.nbr(post_arrays["nir"], post_arrays["swir22"]))
+    rel = burn.rdnbr(nbr_pre, delta)
+    ok = valid_mask(pre_arrays["scl"].astype("uint8"), MASK_CLASSES) & valid_mask(
+        post_arrays["scl"].astype("uint8"), MASK_CLASSES
+    )
+
+    forest_gdf = ign.load("bdforet")
+    rpg_gdf = ign.load("rpg")
+    forest = landcover.mask_from(forest_gdf, grid)
+    agri = landcover.mask_from(rpg_gdf, grid)
+
+    burned_all = burn.burned_mask(delta) & ok
+    low_all = (np.nan_to_num(delta, nan=0.0) >= 0.10) & ok
+
+    def ha(m):
+        return float(m.sum()) * pixel_area / 1e4
+
+    print(f"[cover] forest {ha(forest):,.0f} ha · farmland {ha(agri):,.0f} ha · "
+          f"overlap {ha(forest & agri):,.0f} ha\n")
+
+    print("  F2 — where does the 'burned' area actually fall?")
+    print(f"  {'threshold':<12} {'total':>10} {'in forest':>11} {'on farmland':>13} {'neither':>10}")
+    for name, m in (("dNBR>=0.10", low_all), ("dNBR>=0.27", burned_all)):
+        print(f"  {name:<12} {ha(m):>10,.0f} {ha(m & forest):>11,.0f} "
+              f"{ha(m & ~forest & agri):>13,.0f} {ha(m & ~forest & ~agri):>10,.0f}")
+
+    footprint = landcover.fire_footprint(burned_all)
+    print(f"\n[fire ] footprint {ha(footprint):,.0f} ha "
+          f"(forest {ha(footprint & forest):,.0f} ha)")
+    print(f"[fire ] burned >=0.27 inside footprint and forest: "
+          f"{ha(burned_all & footprint & forest):,.0f} ha")
+
+    for field in ("tfv_g11", "essence"):
+        classes, labels = landcover.rasterise(forest_gdf, grid, field)
+        df = landcover.severity_by_class(
+            classes, labels, delta, rel, footprint & ok, pixel_area
+        )
+        print(f"\n  severity by {field} (inside the fire footprint only):")
+        print(df.to_string(index=False))
+        df.to_csv(OUT_DIR / f"severity_by_{field}.csv", index=False)
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    summary = {
+        "pre": pre_meta["id"], "post": post_meta["id"],
+        "forest_ha": round(ha(forest), 1), "farmland_ha": round(ha(agri), 1),
+        "burned_0.27_total_ha": round(ha(burned_all), 1),
+        "burned_0.27_forest_ha": round(ha(burned_all & forest), 1),
+        "burned_0.10_total_ha": round(ha(low_all), 1),
+        "burned_0.10_on_farmland_ha": round(ha(low_all & ~forest & agri), 1),
+        "fire_footprint_ha": round(ha(footprint), 1),
+        "burned_in_footprint_forest_ha": round(ha(burned_all & footprint & forest), 1),
+    }
+    (OUT_DIR / "forest_summary.json").write_text(json.dumps(summary, indent=2))
+    print(f"\n[out] {OUT_DIR / 'forest_summary.json'}")
+
+    classes, labels = landcover.rasterise(forest_gdf, grid, "tfv_g11")
+    paths = ign.fetch_paths()
+    gdf = climbing.load()
+    print("\n[render]")
+    for name, zoom in (("massif", None), ("trois_pignons", ZOOM_TROIS_PIGNONS)):
+        p = render.plot_landcover(
+            classes, labels, grid, OUT_DIR / f"fuel_{name}.png",
+            footprint=footprint, paths=paths, gdf=gdf, zoom=zoom,
+            title="BD Forêt fuel type, fire footprint and path network",
+        )
+        print(f"  {p}")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__,
                                formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -249,6 +340,15 @@ def main():
     f.add_argument("--radius", type=int, default=2,
                    help="sampling window radius in pixels (default 2 -> 50 m)")
     f.set_defaults(func=cmd_sample)
+
+    v = sub.add_parser("vectors", help="fetch IGN land-cover layers and OSM paths")
+    v.add_argument("--refresh", action="store_true")
+    v.set_defaults(func=cmd_vectors)
+
+    fo = sub.add_parser("forest", help="cross burn severity against fuel type and farmland")
+    fo.add_argument("--pre", default=PRE_SCENE)
+    fo.add_argument("--post", default=POST_SCENE)
+    fo.set_defaults(func=cmd_forest)
 
     args = p.parse_args()
     args.func(args)

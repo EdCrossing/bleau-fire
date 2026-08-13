@@ -9,14 +9,17 @@ NBR is high. Fire strips foliage and leaves char and exposed soil, which drops N
 SWIR, so NBR falls sharply. Differencing pre against post isolates that change from whatever
 the surface was doing anyway.
 
-**Why RdNBR is computed too, and not as decoration.** dNBR is an *absolute* difference, so a
-given fire intensity produces a larger dNBR over dense canopy than over sparse heath purely
-because there was more to lose. Fontainebleau's fuel is genuinely heterogeneous — Scots pine
-plantation, oak and beech, open Calluna heath, and bare sandstone platforms with no fuel at
-all — so an absolute index will systematically read the heath as less severely burned than the
-pine even where both burned completely. RdNBR normalises by pre-fire condition and is the
-honest index for a mixed-fuel massif. Reporting both, and their disagreement, is more
-informative than picking one.
+**Why RdNBR is computed too.** dNBR is an *absolute* difference, so the textbook argument is
+that a given fire intensity yields a larger dNBR over dense canopy than over sparse fuel purely
+because there was more to lose, and that RdNBR — normalising by pre-fire condition — should
+compress that gap.
+
+⚠️ **Measured against BD Forêt fuel labels, that argument came out backwards here.** Heath
+records the *highest* dNBR in the massif (median 0.486) and closed conifer the lowest (0.319),
+and RdNBR widens the gap rather than closing it (0.917 vs 0.448). Heath burns to bare sand, and
+exposed sandstone is bright in SWIR, so the index is partly measuring the *substrate revealed*
+rather than the fire intensity. See `FINDINGS.md` F5 before treating either index as a
+severity measurement across fuel types.
 
 ⚠️ **The thresholds below are not a law of nature.** They are Key & Benson's (2006) FIREMON
 classes, calibrated largely on North American conifer forest. Applying them unmodified to a
