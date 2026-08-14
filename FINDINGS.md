@@ -197,6 +197,69 @@ makes the data extreme**, which in a burn scar is the burn. Percentiles or nothi
 
 ---
 
+## F6 — Severity is not spatially transferable within this fire. Random CV says otherwise, and is wrong
+
+**Holds, and it is a negative result worth more than a positive one would have been.**
+
+Question: given the fire reached a place, what determined how hard it burned there? Predictors
+were elevation, slope, northness/eastness, distance to the track and road network, pre-fire NBR
+as a fuel-condition proxy, and BD Forêt fuel class. Target was dNBR. 60,000 pixels sampled from
+inside the footprint, **eroded by 120 m** so that boundary pixels — which are low-dNBR by
+construction, since the footprint was drawn from dNBR — are dropped rather than modelled.
+Gradient boosting, scored two ways:
+
+| Validation | R² |
+|---|---|
+| Random 5-fold | **+0.392** ± 0.004 |
+| Spatially blocked 5-fold (1 km blocks) | **−0.185** ± 0.297 |
+
+**A negative R² means the model is worse than predicting the mean.** It has no transferable
+skill whatsoever. The random-CV score of 0.39 was measuring spatial autocorrelation: with
+shuffled folds, test pixels sit metres from training pixels, so the model scores well by
+recognising the neighbourhood rather than by learning anything about fire.
+
+Blocked folds: `[-0.36, +0.15, -0.66, -0.13, +0.07]`. Random folds: `[0.394, 0.397, 0.386,
+0.387, 0.395]` — note how implausibly tight the random folds are. That stability was the tell,
+and it is the thing to be suspicious of in anyone else's map accuracy too.
+
+This is **Ploton et al. (2020) reproduced in miniature on our own data**, and the reason
+Wadoux et al. (2021) is worth reading straight afterwards: the blocked score is not automatically
+"the true accuracy" either, it answers a different question — *how well does this transfer to
+unseen ground?* — and here the answer is: it does not.
+
+### The importances are consequently void, and my own docstring said so
+
+`drivers.py` warns that "permutation importance on a model that does not generalise measures
+nothing." That caveat applies to this run. For the record the ranking was elevation (0.241),
+fuel (0.172), distance to track (0.061), then aspect, pre-fire NBR and slope near zero — **but
+this describes how the model uses features to fail, not what drove the fire.** It should not be
+quoted as a driver ranking.
+
+### What can honestly be said
+
+The **marginal descriptions** stand, since they are observed means rather than model effects:
+
+- Heath burned hardest (mean dNBR 0.485), closed conifer lowest — consistent with F5.
+- Lower ground burned harder: 0.436 at 69–77 m against 0.317 at 112–120 m.
+- **Denser pre-fire vegetation burned *less* severely by dNBR** (0.409 at NBR 0.36–0.43 falling
+  to 0.330 at 0.62–0.76), which is the same substrate artefact as F5 rather than a fire fact.
+- Aspect is flat — northness barely moves the mean, so insolation is not visibly steering this.
+- Distance to track shows a weak monotonic rise (0.355 within 10 m to 0.395 beyond 70 m),
+  consistent with roads acting as firebreaks but far too weak to rest anything on.
+
+### Limitations, stated rather than buried
+
+- **Only 31 blocks.** The footprint is ~14 km², so 1 km blocks give few groups and ~6 per fold.
+  The blocked estimate is genuinely noisy (±0.297); the *sign* is consistent across folds but the
+  magnitude is not. A block-size sensitivity sweep is the obvious next step.
+- **n = 1 fire.** One event is one realisation of weather, wind and ignition geometry. The
+  strongest candidate driver — wind on the day — is absent from the predictors entirely, and its
+  absence is a plausible complete explanation for the result.
+- Fuel, terrain and access are mutually correlated (plantations sit where soil suits them, roads
+  follow valleys), so even a positive result would not have isolated a cause.
+
+---
+
 ## Open
 
 - Validate severity classes against EMSR894's independent grading rather than asserting
