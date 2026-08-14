@@ -16,10 +16,10 @@ import numpy as np
 
 from bleau_fire import boulders, burn, climbing, features, ign, landcover, render
 from bleau_fire.config import (
-    AOI, MASK_CLASSES, OUT_DIR, POST_SCENE, PRE_SCENE, build_grid,
+    AOI, MASK_BAND, MASK_CLASSES, OUT_DIR, POST_SCENE, PRE_SCENE, build_grid,
 )
 from bleau_fire.mask import scar_shadow_overlap, valid_mask
-from bleau_fire.raster import read_on_grid, to_reflectance
+from bleau_fire.raster import read_classes_on_grid, read_on_grid, to_reflectance
 from bleau_fire.scenes import fetch_scene, probe_scene, read_scene, scene_path
 from bleau_fire.search import boa_offset, search, summarise
 
@@ -255,12 +255,57 @@ def cmd_problems(args):
     print(f"\n[out] {OUT_DIR / 'problems_severity.csv'} and area/circuit rollups")
 
 
+# Nodata fill for the quicklook series: a flat blue-grey, hatched with a slightly lighter
+# blue-grey on a 16 px diagonal. Neither tone occurs naturally in a Sentinel-2 true-colour
+# composite under the fixed 0.30 stretch — nothing on the ground is that blue at that
+# brightness — so "no observation" is unmistakable at a glance and stays unmistakable in a
+# screenshot, where a tooltip or a caption is not available to disambiguate it.
+NODATA_RGB = (34, 44, 62)
+NODATA_HATCH_RGB = (56, 70, 94)
+NODATA_HATCH_PERIOD = 16  # px; diagonal stripe repeat
+NODATA_HATCH_WIDTH = 3    # px; how much of each period is the lighter tone
+
+
+def _nodata_fill(shape: tuple[int, int]) -> np.ndarray:
+    """A diagonally hatched blue-grey field of `shape`, as uint8 HxWx3.
+
+    Why a hatch and not just a flat colour: a flat fill still reads as "an image of something"
+    and viewers rationalise it as haze or water. A regular synthetic texture cannot be mistaken
+    for a measurement — the eye classifies it as chrome, not data, which is exactly the message.
+
+    ⚠️ Keep the stripe period well above the JPEG 8x8 block size and the tones far enough apart
+    that quality-78 chroma subsampling does not smear the hatch into a flat mush. At period 16 /
+    width 3 it survives; at period 4 it does not, and it also aliases badly when the browser
+    scales the frame down into the scrubber.
+    """
+    h, w = shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    stripe = ((xx + yy) % NODATA_HATCH_PERIOD) < NODATA_HATCH_WIDTH
+    fill = np.empty((h, w, 3), dtype="uint8")
+    fill[...] = np.asarray(NODATA_RGB, dtype="uint8")
+    fill[stripe] = np.asarray(NODATA_HATCH_RGB, dtype="uint8")
+    return fill
+
+
 def cmd_quicklooks(args):
     """Render every pass in the window, cloud and all, as a consistent-stretch JPEG series.
 
     Deliberately includes unusable scenes. A scrubbable series where some frames are solid
     cloud and some are half-empty swath tells you more about what working with optical EO is
     actually like than a curated set of eight clear days.
+
+    ⚠️ **Nodata must not render as black.** The first version of this mapped NaN to 0 with
+    `np.nan_to_num`, so a partial-swath frame — most of the AOI outside the orbit footprint —
+    came out as a black rectangle with a small lit corner, visually identical to dark ground at
+    dusk or a badly exposed scene. It reads as corrupt or night-time data and it is neither.
+    Measured on `S2B_31UDP_20260606_0_L2A`: 98.97% of the AOI is SCL class 0, and *zero* pixels
+    are dark-but-valid (see FINDINGS.md F10). Nodata is therefore painted as a hatched
+    blue-grey, and the true AOI-valid percentage goes into frames.json so the viewer can label
+    each frame honestly rather than leaving the reader to guess.
+
+    SCL is read for every frame rather than only for rendered ones, because it answers both
+    questions at once — which pixels were never observed, and what share of the AOI is actually
+    usable — and one 20 m band per scene is cheap next to three 10 m reflectance bands.
     """
     from PIL import Image
 
@@ -269,17 +314,26 @@ def cmd_quicklooks(args):
     items = search(args.start, args.end, max_cloud=100.0)
     qdir = OUT_DIR / "series"
     qdir.mkdir(parents=True, exist_ok=True)
+    fill = _nodata_fill(grid.shape)
 
+    # `run.py probe` may have measured a *different* window at a different resolution, so it is
+    # only a fallback for frames this run does not re-render. Anything rendered here reports the
+    # validity of the exact array that was drawn.
     quality = {q["id"]: q for q in json.loads((OUT_DIR / "scene_quality.json").read_text())} \
         if (OUT_DIR / "scene_quality.json").exists() else {}
 
     frames = []
     for n, item in enumerate(items, 1):
         out = qdir / f"{item['properties']['datetime'][:10]}_{item['id']}.jpg"
-        if not out.exists() or args.refresh:
+        q = quality.get(item["id"], {})
+        valid_pct, nodata_pct = q.get("aoi_valid_pct"), q.get("aoi_nodata_pct")
+        source = "probe" if valid_pct is not None else None
+
+        if not out.exists() or args.refresh or valid_pct is None:
             assets = item["assets"]
             offset = boa_offset(item)
             try:
+                scl = read_classes_on_grid(assets[MASK_BAND]["href"], grid)
                 rgb = np.stack([
                     to_reflectance(read_on_grid(assets[b]["href"], grid), offset)
                     for b in ("red", "green", "blue")
@@ -287,24 +341,38 @@ def cmd_quicklooks(args):
             except Exception as exc:
                 print(f"  [{n}/{len(items)}] {item['id']}: {type(exc).__name__}, skipped")
                 continue
+
+            # Union of the two independent nodata signals: SCL's own class 0 and a NaN in any
+            # reflectance band. They agreed to the pixel on every scene checked, but they are
+            # separate assets read at different native resolutions and there is no reason to
+            # assume that holds everywhere — a pixel unobserved by either is not data.
+            missing = (scl == 0) | np.isnan(rgb).any(axis=-1)
+            valid_pct = round(float(valid_mask(scl, MASK_CLASSES).mean()) * 100, 2)
+            nodata_pct = round(float((scl == 0).mean()) * 100, 2)
+            source = "rendered"
+
             # Fixed stretch, NOT per-scene percentiles. A per-frame stretch makes the series
             # flicker and hides exactly the thing worth seeing — that some passes are cloud.
             img = np.clip(np.nan_to_num(rgb) / 0.30, 0, 1)
-            Image.fromarray((img * 255).astype("uint8")).save(
-                out, "JPEG", quality=78, optimize=True
-            )
-        q = quality.get(item["id"], {})
+            img = (img * 255).astype("uint8")
+            img[missing] = fill[missing]
+            Image.fromarray(img).save(out, "JPEG", quality=78, optimize=True)
+
         frames.append({
             "id": item["id"], "date": item["properties"]["datetime"][:10],
             "file": out.name,
             "cloud": round(float(item["properties"].get("eo:cloud_cover", 0)), 1),
-            "valid": q.get("aoi_valid_pct"), "nodata": q.get("aoi_nodata_pct"),
+            "valid": valid_pct, "nodata": nodata_pct, "valid_source": source,
         })
         print(f"  [{n}/{len(items)}] {frames[-1]['date']}  cloud={frames[-1]['cloud']:5.1f}%  "
-              f"valid={frames[-1]['valid']}  {out.name}")
+              f"valid={valid_pct:6.2f}%  nodata={nodata_pct:6.2f}%  {out.name}")
 
+    missing_valid = [f for f in frames if f["valid"] is None]
     (qdir / "frames.json").write_text(json.dumps(frames, indent=2))
     print(f"\n[out] {len(frames)} frames -> {qdir}")
+    print(f"  {len(frames) - len(missing_valid)}/{len(frames)} frames carry an AOI-valid %")
+    swath = [f for f in frames if (f["nodata"] or 0) > 50]
+    print(f"  {len(swath)} frame(s) are >50% nodata — partial swaths, drawn hatched not black")
 
 
 def cmd_vectors(args):

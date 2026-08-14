@@ -30,34 +30,43 @@ ok = valid_mask(pre_arrays["scl"].astype("uint8"), MASK_CLASSES) & valid_mask(
     post_arrays["scl"].astype("uint8"), MASK_CLASSES
 )
 
+# Resolution is spent where zoom actually goes. The two Sentinel-2 scenes are what people
+# zoom into to look at individual boulders, so they get close to the native 2,978 px grid;
+# the historic layers are context and are natively coarse anyway.
+W_SCENE, W_ORTHO, W_HIST, W_OVERLAY = 3000, 2400, 1700, 1900
+
 print("\n[base layers]")
-print(" ", webexport.write_rgb(pre_arrays, LAYERS / "rgb_pre.jpg"))
-print(" ", webexport.write_rgb(post_arrays, LAYERS / "rgb_post.jpg"))
+print(" ", webexport.write_rgb(pre_arrays, LAYERS / "rgb_pre.jpg", width=W_SCENE))
+print(" ", webexport.write_rgb(post_arrays, LAYERS / "rgb_post.jpg", width=W_SCENE))
 
 print("\n[overlays]")
 # Transparent below 0.10 so the layer annotates the imagery instead of replacing it.
-print(" ", webexport.write_colormapped(delta, LAYERS / "dnbr.png",
+print(" ", webexport.write_colormapped(delta, LAYERS / "dnbr.png", width=W_OVERLAY,
                                        vmin=-0.1, vmax=0.9, alpha_below=0.10))
 classes = burn.classify(delta)
 classes[~ok] = -1
 print(" ", webexport.write_classes(classes, [burn.CLASS_COLOURS[c] for c in burn.CLASS_LABELS],
-                                   LAYERS / "severity.png", transparent_below=3))
+                                   LAYERS / "severity.png", width=W_OVERLAY,
+                                   transparent_below=3))
 
 forest_gdf = ign.load("bdforet")
 fuel_classes, fuel_labels = landcover.rasterise(forest_gdf, grid, "tfv_g11")
 present = [fuel_labels[c] for c in sorted(fuel_labels)]
 print(" ", webexport.write_classes(
-    fuel_classes, [FUEL_COLOURS.get(lb, "#B9B2A4") for lb in present], LAYERS / "fuel.png"))
+    fuel_classes, [FUEL_COLOURS.get(lb, "#B9B2A4") for lb in present], LAYERS / "fuel.png",
+    width=W_OVERLAY))
 
 burned = burn.burned_mask(delta) & ok
 footprint = landcover.fire_footprint(burned)
 print(" ", webexport.write_classes(footprint.astype("int16"), ["#00000000", "#B0180A"],
-                                   LAYERS / "footprint.png", transparent_below=1))
+                                   LAYERS / "footprint.png", width=W_OVERLAY,
+                                   transparent_below=1))
 
 print("\n[historic — IGN WMS]")
 for key, layer in webexport.HISTORIC.items():
     try:
-        p = webexport.fetch_wms(layer, LAYERS / f"{key}.jpg")
+        w = W_ORTHO if key == "ortho_now" else W_HIST
+        p = webexport.fetch_wms(layer, LAYERS / f"{key}.jpg", width=w, refresh=True)
         print(f"  {key:<11} {p.stat().st_size / 1e6:5.2f} MB  {layer}")
     except Exception as exc:
         print(f"  !! {key}: {type(exc).__name__}: {exc}")

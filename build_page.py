@@ -23,7 +23,7 @@ OUT = ROOT / "data" / "out"
 SERIES = OUT / "series"
 
 # Series frames get their own budget: many small frames beat few large ones for a scrubber.
-SERIES_WIDTH, SERIES_QUALITY = 950, 60
+SERIES_WIDTH, SERIES_QUALITY = 720, 50
 
 
 def uri(path: Path) -> str:
@@ -132,27 +132,90 @@ SEV_KEY = {"low severity": "s1", "moderate-low severity": "s2",
 SEV_SHORT = {"low severity": "low", "moderate-low severity": "mod-low",
              "moderate-high severity": "mod-high", "high severity": "high"}
 
-circ = pd.read_csv(OUT / "circuits_severity.csv").head(14)
+circ = pd.read_csv(OUT / "circuits_severity.csv").head(16)
 CIRCUIT_ROWS = "\n".join(
-    f'<tr><td class="nm">{html.escape(str(r["area_name"]))}</td>'
-    f'<td><span class="dot" style="background:{r["circuit_color"]}"></span>'
+    f'<tr data-area="{html.escape(str(r["area_name"]), quote=True)}" '
+    f'data-circuit="{html.escape(str(r["circuit_color"]), quote=True)}">'
+    f'<td>{html.escape(str(r["area_name"]))}</td>'
+    f'<td class="dimtd"><span class="dot" style="background:{r["circuit_color"]}"></span>'
     f'{html.escape(str(r["circuit_color"]))}</td>'
-    f'<td class="num">{int(r["problems"])}</td>'
-    f'<td class="num">{r["dnbr_median"]:.2f}</td>'
-    f'<td class="num strong">{r["pct_burned"]:.0f}%</td>'
-    f'<td class="bar"><span style="width:{r["pct_burned"]:.0f}%"></span></td></tr>'
+    f'<td class="n">{int(r["problems"])}</td>'
+    f'<td class="n">{r["dnbr_median"]:.2f}</td>'
+    f'<td class="n b">{r["pct_burned"]:.0f}%</td>'
+    f'<td><div class="bar"><span style="width:{r["pct_burned"]:.0f}%"></span></div></td></tr>'
     for _, r in circ.iterrows()
 )
 
-fuel = pd.read_csv(OUT / "severity_by_tfv_g11.csv")
-FUEL_ROWS = "\n".join(
-    f'<tr><td class="nm">{html.escape(r["class"])}</td>'
-    f'<td class="num">{r["ha_in_fire"]:,.0f}</td>'
-    f'<td class="num">{r["pct_burned"]:.1f}%</td>'
-    f'<td class="num">{r["dnbr_median"]:.3f}</td>'
-    f'<td class="num sub">{r["rdnbr_median"]:.3f}</td></tr>'
-    for _, r in fuel.iterrows()
+# --- fuel cards: chips + description when the chip job has produced them ---
+FUEL_DESC_PATH = WEB / "fuel_meta.json"
+CHIPS = WEB / "fuel_chips"
+fuel_meta = json.loads(FUEL_DESC_PATH.read_text()) if FUEL_DESC_PATH.exists() else {}
+fuel_stats = pd.read_csv(OUT / "severity_by_tfv_g11.csv")
+
+def chip_html(slug, when):
+    f = CHIPS / f"{slug}_{when}.jpg"
+    if not f.exists():
+        return ""
+    return (f'<div class="chip"><img src="{uri(f)}" alt="{when}-fire imagery">'
+            f'<span>{when}</span></div>')
+
+cards = []
+for _, r in fuel_stats.iterrows():
+    name = r["class"]
+    meta = fuel_meta.get(name, {})
+    slug = meta.get("slug", "")
+    pre, post = (chip_html(slug, "pre"), chip_html(slug, "post")) if slug else ("", "")
+    chips = f'<div class="chips">{pre}{post}</div>' if pre or post else ""
+    desc = meta.get("description", "")
+    cards.append(
+        f'<div class="fuel">{chips}'
+        f'<h3>{html.escape(name)}</h3>'
+        f'<div class="stat"><span>dNBR <b>{r["dnbr_median"]:.3f}</b></span>'
+        f'<span>burned <b>{r["pct_burned"]:.0f}%</b></span>'
+        f'<span><b>{r["ha_in_fire"]:,.0f}</b> ha</span></div>'
+        + (f'<p>{html.escape(desc)}</p>' if desc else "")
+        + "</div>"
+    )
+FUEL_CARDS = "\n".join(cards)
+
+# --- fire weather: fuller ranking with the fire days highlighted in place ---
+fwi = pd.read_csv(OUT / "fwi_1940_2026.csv", parse_dates=["date"])
+top = fwi.nlargest(20, "FWI").reset_index(drop=True)
+FIRE_DAYS = {"2026-07-12", "2026-07-13"}
+FWI_ROWS = "\n".join(
+    f'<tr class="{"hl" if r["date"].strftime("%Y-%m-%d") in FIRE_DAYS else ""}">'
+    f'<td class="n dimtd">{i + 1}</td>'
+    f'<td>{r["date"].strftime("%d %b %Y")}</td>'
+    f'<td class="n b">{r["FWI"]:.1f}</td>'
+    f'<td class="n dimtd">{r["temp"]:.1f}&deg;C</td>'
+    f'<td class="n dimtd">{r["rh"]:.0f}%</td>'
+    f'<td class="n dimtd">{r["wind"]:.0f}</td>'
+    f'<td class="n dimtd">{r["DC"]:.0f}</td></tr>'
+    for i, r in top.iterrows()
 )
+
+# Distribution across all 31,637 days. The final bin holds the two fire days, so it is
+# marked — the point of the figure is how far into the tail they sit.
+import numpy as _np
+vals = fwi["FWI"].to_numpy()
+NB = 46
+hi_edge = float(_np.nanmax(vals))
+counts, edges = _np.histogram(vals, bins=NB, range=(0, hi_edge))
+peak = counts.max() or 1
+fire_bin = int(_np.digitize(58.53, edges) - 1)
+HIST_BARS = "".join(
+    f'<i class="{"fire" if b >= fire_bin else ""}" '
+    f'style="height:{max(1, round(100 * c / peak))}%"></i>'
+    for b, c in enumerate(counts)
+)
+HIST_MID = f"{hi_edge / 2:.0f}"
+HIST_MAX = f"{hi_edge:.0f}"
+
+# --- place labels, if the places job has produced them ---
+PLACES_PATH = WEB / "places.json"
+PLACES = (json.loads(PLACES_PATH.read_text()).get("places", [])
+          if PLACES_PATH.exists() else [])
+PLACES.sort(key=lambda p: p.get("rank", 99))
 
 problems = pd.read_csv(OUT / "problems_severity.csv")
 n_burned = int((problems["dnbr_median"] >= 0.27).sum())
@@ -167,10 +230,15 @@ HTML = (
     .replace("__SERIES__", json.dumps(series, separators=(",", ":")))
     .replace("__SEVLABELS__", json.dumps(SEV_LABELS))
     .replace("__CIRCUIT_ROWS__", CIRCUIT_ROWS)
-    .replace("__FUEL_ROWS__", FUEL_ROWS)
+    .replace("__FUEL_CARDS__", FUEL_CARDS)
+    .replace("__FWI_ROWS__", FWI_ROWS)
+    .replace("__HIST_BARS__", HIST_BARS)
+    .replace("__HIST_MID__", HIST_MID)
+    .replace("__HIST_MAX__", HIST_MAX)
+    .replace("__PLACES__", json.dumps(PLACES, separators=(",", ":"),
+                                     ensure_ascii=False))
     .replace("__N_BURNED__", f"{n_burned:,}")
     .replace("__N_TOTAL__", f"{n_total:,}")
-    .replace("__N_FRAMES__", str(len(series)))
     .replace("__FOREST_HA__", f"{forest['burned_0.27_forest_ha']:,.0f}")
 )
 

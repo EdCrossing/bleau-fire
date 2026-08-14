@@ -447,6 +447,86 @@ opposite mechanism to the one I proposed.
 
 ---
 
+## F10 — The black quicklook frames are empty swath, not dark ground. The renderer was lying
+
+**Holds, exactly as hypothesised, and with no ambiguous middle case.**
+
+Several frames in the scrubbable series render as a black rectangle with a small lit corner.
+The readings on the table were night-time acquisition or corrupt data. The proposed explanation
+was nodata from a partial orbit swath, mapped to black by `np.nan_to_num(rgb)` in
+`cmd_quicklooks`.
+
+Checked on the frame that prompted it — **2026-06-06** (`S2B_31UDP_20260606_0_L2A`, advertised
+99.8% cloud; there is no 2026-08-06 acquisition, the date was transposed). SCL and RGB re-read
+on the same 20 m quicklook grid, then three masks compared pixel by pixel:
+
+| Measure | Share of AOI |
+|---|---|
+| SCL class 0 (nodata) | **98.97%** |
+| NaN in any of R/G/B after the read | 98.97% |
+| Renders below 5/255 under the fixed stretch | 98.97% |
+| Black **and** nodata | 98.97% |
+| **Black but genuinely valid data** | **0.00%** |
+| Nodata but not black | 0.00% |
+
+The three masks agree on **100.00%** of pixels. Not one pixel in that frame is dark ground
+mistaken for emptiness, or the reverse — the black region is entirely outside the orbit
+footprint. The lit corner is the only observed sliver, and it is cloud: median reflectance
+**0.67** across 21,196 pixels, which is what the 99.8% figure is computed over.
+
+**Neither reading on the table was right.** It is not night-time — Sentinel-2 images on the
+descending daylight node and never acquires optical data in darkness — and it is not corrupt;
+the data is exactly as delivered. The renderer chose black for "nothing here", and black
+already meant "very dark ground".
+
+### The control matters more than the confirmation
+
+`S2A_31UDP_20260401_0_L2A` advertises **100% cloud** and is **0.00% nodata** — it renders as a
+bright white sheet, not a black one. The series contains two distinct failure modes that look
+nothing alike once nodata is drawn honestly: **totally clouded** (bright) and **barely
+observed** (empty). Before the fix they were separable only by luck, because cloud is bright
+and empty space happened to be black.
+
+This is F1 seen from the rendering end rather than the metadata end. There, a near-empty granule
+reported near-zero cloud and looked like the best scene available. Here, a near-empty granule
+reported 99.8% cloud and looked like a broken sensor. **In both cases the AOI-valid fraction is
+the number that resolves it, and in neither case was it on screen.**
+
+### What changed
+
+- Nodata — `SCL == 0` **or** NaN in any reflectance band, unioned rather than trusting either
+  alone — is painted as a **hatched blue-grey**, a tone and texture no true-colour Sentinel-2
+  composite produces under the fixed 0.30 stretch. The fixed stretch is kept: a per-frame
+  percentile stretch would make the series flicker and would hide the cloudy passes, which are
+  half the point of showing every pass.
+- Every frame now carries its **measured AOI-valid percentage** in `frames.json`, computed from
+  the SCL actually read at render time, so a frame can be labelled rather than leaving the
+  reader to infer usability from brightness. **40 of 79 frames previously had `valid: null`** —
+  `run.py probe` had only ever been run from 1 June, so the entire April–May stretch was
+  unlabelled, and those are exactly the months with no independent narrative to catch an error.
+
+### It generalises across the whole series
+
+Measuring the black fraction of all 79 *old* frames against the freshly measured `SCL == 0`
+fraction for the same scene: the two agree to within **0.13 pp at worst, 0.01 pp median**.
+Every black pixel in the old series was empty swath. **39 of 79 frames are more than 50%
+nodata** — half the series was rendering as something it is not.
+
+The regenerated series is 79 frames, **79/79 carrying a measured AOI-valid percentage**, and it
+separates cleanly into the two failure modes: 39 partial swaths, and **10 frames that are 0%
+nodata and 0% valid** — fully observed, fully clouded. Those ten were always honest; it is the
+other 39 that were not.
+
+### What this does not establish
+
+The agreement above is between *aggregate fractions* per frame, not pixel by pixel; only the
+three scenes in the table were compared mask to mask. SCL and the reflectance bands are separate
+assets read at different native resolutions, so the renderer unions the two nodata signals
+rather than assuming the equivalence holds everywhere. If it ever fails, the union fails safe —
+a pixel unobserved by either is drawn as unobserved.
+
+---
+
 ## Open
 
 - Validate severity classes against EMSR894's independent grading rather than asserting
