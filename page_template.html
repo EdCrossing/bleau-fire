@@ -1,0 +1,489 @@
+<title>Which Bleau Boulders Burned</title>
+<style>
+:root {
+  --char:#EFEBE2; --plate:#FBF9F5; --panel:#FFFFFF; --ink:#221D16; --muted:#6B6154;
+  --line:#D8D1C4; --marker:#136A7C; --marker-soft:#E0F0F3; --grat:rgba(20,16,12,.42);
+  --s0:#C9C9C9; --s1:#E8B84B; --s2:#E07A3C; --s3:#CE4326; --s4:#7F1208;
+  --shadow:0 1px 2px rgba(34,29,22,.06),0 8px 24px rgba(34,29,22,.07);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --char:#15120E; --plate:#0E0C09; --panel:#1F1B15; --ink:#EDE7DB; --muted:#9A9081;
+    --line:#332C23; --marker:#5CC8DA; --marker-soft:#123038; --grat:rgba(240,235,225,.34);
+    --s0:#8A8A8A; --s1:#E8B84B; --s2:#E8853F; --s3:#E04E2C; --s4:#B01A0C;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.45);
+  }
+}
+:root[data-theme="dark"] {
+  --char:#15120E; --plate:#0E0C09; --panel:#1F1B15; --ink:#EDE7DB; --muted:#9A9081;
+  --line:#332C23; --marker:#5CC8DA; --marker-soft:#123038; --grat:rgba(240,235,225,.34);
+  --s0:#8A8A8A; --s1:#E8B84B; --s2:#E8853F; --s3:#E04E2C; --s4:#B01A0C;
+  --shadow:0 1px 2px rgba(0,0,0,.5),0 10px 30px rgba(0,0,0,.45);
+}
+*,*::before,*::after { box-sizing:border-box; }
+body { margin:0; background:var(--char); color:var(--ink);
+  font:16px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased; }
+.wrap { max-width:1240px; margin:0 auto; padding:clamp(22px,4vw,56px) clamp(16px,3vw,32px) 80px; }
+h1,h2,h3 { font-family:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  font-weight:600; text-wrap:balance; margin:0; }
+h1 { font-size:clamp(1.9rem,4.3vw,2.9rem); line-height:1.08; letter-spacing:-.015em; }
+h2 { font-size:1.4rem; letter-spacing:-.01em; }
+p { margin:0; }
+.mono { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-variant-numeric:tabular-nums; }
+.eyebrow { font:600 .72rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--marker); }
+header { display:flex; flex-direction:column; gap:16px; padding-bottom:30px; border-bottom:1px solid var(--line); }
+.lede { max-width:64ch; color:var(--muted); font-size:1.04rem; }
+.lede strong { color:var(--ink); font-weight:600; }
+.stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(148px,1fr)); gap:1px;
+  background:var(--line); border:1px solid var(--line); border-radius:10px; overflow:hidden; margin:30px 0; }
+.stat { background:var(--panel); padding:15px 17px; display:flex; flex-direction:column; gap:4px; }
+.stat .v { font:600 1.5rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-variant-numeric:tabular-nums; letter-spacing:-.02em; }
+.stat .k { font-size:.77rem; color:var(--muted); line-height:1.35; }
+section { margin-top:48px; display:flex; flex-direction:column; gap:16px; }
+
+/* ---- map ---- */
+.maprow { display:grid; grid-template-columns:238px 1fr; gap:16px; align-items:start; }
+@media (max-width:840px){ .maprow { grid-template-columns:1fr; } }
+.panel { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+  padding:14px; display:flex; flex-direction:column; gap:14px; }
+.panel h3 { font:600 .68rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  letter-spacing:.11em; text-transform:uppercase; color:var(--muted); }
+.opts { display:flex; flex-direction:column; gap:5px; }
+.opt { display:flex; align-items:center; gap:8px; font-size:.83rem; cursor:pointer;
+  padding:5px 7px; border-radius:6px; }
+.opt:hover { background:var(--marker-soft); }
+.opt input { accent-color:var(--marker); margin:0; flex:none; }
+.opt .sub2 { color:var(--muted); font-size:.72rem; display:block; }
+.slider { width:100%; accent-color:var(--marker); }
+.mapbox { position:relative; background:var(--plate); border:1px solid var(--line);
+  border-radius:10px; overflow:hidden; box-shadow:var(--shadow); aspect-ratio:2978/2764;
+  touch-action:none; cursor:grab; }
+.mapbox.dragging { cursor:grabbing; }
+.world { position:absolute; inset:0; transform-origin:0 0; }
+.world img { position:absolute; inset:0; width:100%; height:100%; display:block;
+  image-rendering:auto; }
+#cv { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.hud { position:absolute; left:10px; bottom:10px; display:flex; gap:6px; align-items:center;
+  background:rgba(12,10,8,.74); color:#F2EEE6; padding:6px 10px; border-radius:7px;
+  font:.72rem/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; backdrop-filter:blur(6px); }
+.zoombtns { position:absolute; right:10px; top:10px; display:flex; flex-direction:column; gap:4px; }
+.zoombtns button { width:30px; height:30px; border-radius:6px; border:1px solid var(--line);
+  background:var(--panel); color:var(--ink); font-size:1rem; cursor:pointer; line-height:1; }
+.zoombtns button:hover { background:var(--marker-soft); color:var(--marker); }
+.tip { position:absolute; pointer-events:none; z-index:9; background:rgba(12,10,8,.92);
+  color:#F2EEE6; padding:8px 10px; border-radius:7px; font-size:.76rem; line-height:1.45;
+  max-width:230px; opacity:0; transition:opacity .1s; box-shadow:0 4px 16px rgba(0,0,0,.4); }
+.tip b { font-weight:640; }
+.tip .g { font-family:ui-monospace,monospace; color:#8FE3F2; }
+.scrub { display:flex; flex-direction:column; gap:7px; }
+.scrubrow { display:flex; align-items:center; gap:11px; }
+.scrubrow button { border:1px solid var(--line); background:var(--panel); color:var(--ink);
+  border-radius:6px; width:32px; height:30px; cursor:pointer; }
+.scrubrow input[type=range] { flex:1; accent-color:var(--marker); }
+.framelab { font:.78rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--muted); white-space:nowrap; min-width:190px; }
+.framelab b { color:var(--ink); }
+
+.cap { font-size:.85rem; color:var(--muted); max-width:72ch; }
+.cap .mono { color:var(--ink); }
+.tablewrap { overflow-x:auto; border:1px solid var(--line); border-radius:10px; background:var(--panel); }
+table { width:100%; border-collapse:collapse; font-size:.88rem; }
+th { text-align:left; font:600 .68rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  letter-spacing:.09em; text-transform:uppercase; color:var(--muted);
+  padding:12px 13px; border-bottom:1px solid var(--line); white-space:nowrap; }
+td { padding:10px 13px; border-bottom:1px solid var(--line); }
+tr:last-child td { border-bottom:0; }
+.nm { font-weight:560; }
+.num { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-variant-numeric:tabular-nums; text-align:right; white-space:nowrap; }
+.num.strong { font-weight:680; }
+.sub { color:var(--muted); }
+.dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:6px;
+  border:1px solid rgba(0,0,0,.25); vertical-align:middle; }
+.bar { width:20%; }
+.bar span { display:block; height:7px; border-radius:4px; background:var(--s3); }
+.notes { display:grid; gap:13px; }
+.note { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--s2);
+  border-radius:8px; padding:15px 17px; display:flex; flex-direction:column; gap:6px; }
+.note h3 { font-size:.98rem; }
+.note p { font-size:.88rem; color:var(--muted); max-width:74ch; }
+.note p strong { color:var(--ink); font-weight:600; }
+footer { margin-top:56px; padding-top:22px; border-top:1px solid var(--line);
+  font-size:.79rem; color:var(--muted); display:flex; flex-direction:column; gap:6px; }
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">Sentinel-2 · 12 July 2026 · EMSR894</p>
+  <h1>Which Bleau boulders burned</h1>
+  <p class="lede">On 12 July 2026 an arson fire burned roughly <strong>2,000 hectares</strong> of
+  the Fontainebleau massif — about a tenth of the forest, and the worst since records began in
+  1863. Every one of <strong>__N_TOTAL__ bouldering problems</strong> in Boolder's open database
+  is sampled against the burn, so the answer is a named problem on a named circuit rather than a
+  hectare count.</p>
+</header>
+
+<div class="stats">
+  <div class="stat"><span class="v">__N_BURNED__</span><span class="k">problems at moderate-low severity or worse</span></div>
+  <div class="stat"><span class="v">__FOREST_HA__</span><span class="k">hectares of forest burned (dNBR ≥ 0.27)</span></div>
+  <div class="stat"><span class="v">100%</span><span class="k">of Rocher du Général's yellow circuit</span></div>
+  <div class="stat"><span class="v">__N_FRAMES__</span><span class="k">satellite passes, cloud included</span></div>
+</div>
+
+<section>
+  <div><p class="eyebrow">The map</p><h2>Drag to pan, scroll to zoom</h2></div>
+  <div class="maprow">
+    <div class="panel">
+      <div>
+        <h3>Base</h3>
+        <div class="opts" id="bases"></div>
+      </div>
+      <div>
+        <h3>Overlays</h3>
+        <div class="opts" id="overs"></div>
+        <label class="opt" style="padding-left:0"><span class="sub2">Overlay opacity</span></label>
+        <input class="slider" id="opacity" type="range" min="0" max="100" value="72"
+               aria-label="Overlay opacity" />
+      </div>
+      <div>
+        <h3>Problems</h3>
+        <div class="opts" id="ptopts"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="mapbox" id="mapbox">
+        <div class="world" id="world"></div>
+        <canvas id="cv"></canvas>
+        <div class="hud"><span id="coord">—</span><span id="scale"></span></div>
+        <div class="zoombtns">
+          <button type="button" id="zin" aria-label="Zoom in">+</button>
+          <button type="button" id="zout" aria-label="Zoom out">−</button>
+          <button type="button" id="zreset" aria-label="Reset view" style="font-size:.7rem">⌂</button>
+        </div>
+        <div class="tip" id="tip"></div>
+      </div>
+      <div class="scrub" style="margin-top:12px">
+        <div class="scrubrow">
+          <button type="button" id="play" aria-label="Play time series">▶</button>
+          <input id="time" type="range" min="0" max="0" value="0" aria-label="Satellite pass" />
+          <span class="framelab" id="framelab">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">The time slider steps through <b>every</b> Sentinel-2 pass in the window,
+  including the cloudy and half-empty ones — that is what optical EO actually looks like before
+  you curate it. All frames share one fixed brightness stretch so the series does not flicker.
+  Hover any point for its grade, circuit and measured dNBR.</p>
+</section>
+
+<section>
+  <div><p class="eyebrow">The answer</p><h2>Circuits inside the scar</h2></div>
+  <p class="cap">Circuits are keyed by area and colour — the same colour recurs across dozens of
+  sectors, so pooling by colour alone would be meaningless. Only circuits with five or more
+  mapped problems are shown.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Area</th><th>Circuit</th><th>Problems</th><th>dNBR</th><th>Burned</th><th></th></tr></thead>
+    <tbody>__CIRCUIT_ROWS__</tbody>
+  </table></div>
+</section>
+
+<section>
+  <div><p class="eyebrow">What was burning</p><h2>Severity by fuel type</h2></div>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Fuel type</th><th>ha in fire</th><th>burned</th><th>dNBR</th><th>RdNBR</th></tr></thead>
+    <tbody>__FUEL_ROWS__</tbody>
+  </table></div>
+  <p class="cap"><strong>The opposite of what I predicted.</strong> The textbook argument is that
+  dNBR under-reads sparse fuel and RdNBR compresses the gap. Heath reads <em>highest</em> here,
+  closed conifer lowest, and RdNBR widens the spread. Calluna heath at Fontainebleau sits on open
+  sand and burns to complete consumption, exposing bright substrate that is highly reflective in
+  SWIR — so over heath the index substantially measures <em>the sand revealed</em>, not the energy
+  released.</p>
+</section>
+
+<section>
+  <div><p class="eyebrow">Read this before quoting a number</p><h2>What the data will not support</h2></div>
+  <div class="notes">
+    <div class="note">
+      <h3>The fire footprint is mine, not an official perimeter</h3>
+      <p>The red outline is <strong>derived here</strong> — gaps in the dNBR ≥ 0.27 mask closed,
+      interior holes filled, components under 200 ha dropped. It exists so the fuel comparison only
+      counts polygons the fire actually reached. Copernicus EMS published a real delineation under
+      activation EMSR894; until that is wired in, treat the outline as a working boundary.</p>
+    </div>
+    <div class="note">
+      <h3>Half the naive burned area is farm harvest</h3>
+      <p>Fields cut between the two dates produce the same signature dNBR detects. Against IGN's
+      RPG register of declared parcels: of the 3,711 ha above dNBR 0.10, <strong>1,867 ha sits on
+      farmland</strong>. At 0.27 that falls to 118 ha. The forest-only figure is __FOREST_HA__ ha.</p>
+    </div>
+    <div class="note">
+      <h3>Contributed positions, not survey</h3>
+      <p>Boolder's coordinates come from climbers, not surveyors — 10–20 m of error, which is one
+      to two pixels. Each problem is sampled over a 50 m window and flagged where the plausible
+      range crosses a class boundary. <strong>More problems does not mean more precise ones</strong>:
+      a circuit-level percentage is far more trustworthy than any single problem's class.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Contains modified Copernicus Sentinel-2 data (2026). Bouldering data ©
+  <a href="https://www.boolder.com" style="color:var(--marker)">Boolder</a>, CC BY 4.0.
+  Forest, farmland and historic layers © IGN, Licence Ouverte / Etalab 2.0. Paths ©
+  OpenStreetMap contributors, ODbL.</p>
+  <p class="mono">grid EPSG:32631 @ 10 m · severity classes after Key &amp; Benson (2006),
+  not yet validated against EMSR894</p>
+</footer>
+</div>
+
+<script>
+const LAYERS = __LAYERS__, DATA = __POINTS__, SERIES = __SERIES__, SEV = __SEVLABELS__;
+const SEVCOL = ["#C9C9C9","#C9C9C9","#C9C9C9","#E8B84B","#E07A3C","#CE4326","#7F1208"];
+const BASES = [["rgb_pre","10 July 2026","Sentinel-2A, 2 days pre-fire"],
+  ["rgb_post","20 July 2026","Sentinel-2A, 8 days post-fire"],
+  ["ortho_now","Aerial, current","IGN orthophotography"],
+  ["ortho1950","Aerial, 1950–65","IGN historic"],
+  ["etatmajor","État-Major, 1820–66","Defines ancient woodland"]];
+const OVERS = [["dnbr","dNBR","continuous, clear below 0.10"],
+  ["severity","Severity classes","mod-low and above"],
+  ["fuel","Forest type","BD Forêt V2"],
+  ["anciennes","Ancient woodland","wooded since 1820–66"],
+  ["footprint","Fire footprint","derived, not official"]];
+
+const B = DATA.bounds, W = B.east - B.west, H = B.north - B.south;
+const world = document.getElementById('world'), box = document.getElementById('mapbox');
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const tip = document.getElementById('tip'), coord = document.getElementById('coord');
+const scaleEl = document.getElementById('scale');
+let tx = 0, ty = 0, k = 1, showPts = true, onlyBurned = false, timeIdx = -1;
+
+/* ---- layer elements ---- */
+const imgs = {};
+function addImg(key, z) {
+  if (!LAYERS[key]) return;
+  const im = new Image(); im.src = LAYERS[key]; im.alt = ''; im.style.zIndex = z;
+  im.style.display = 'none'; world.appendChild(im); imgs[key] = im;
+}
+BASES.forEach(([k2], i) => addImg(k2, 1));
+OVERS.forEach(([k2], i) => addImg(k2, 5 + i));
+const seriesImg = new Image(); seriesImg.alt = ''; seriesImg.style.zIndex = 2;
+seriesImg.style.display = 'none'; world.appendChild(seriesImg);
+
+let base = 'rgb_post';
+const overOn = new Set(['dnbr']);
+
+function buildControls() {
+  const bc = document.getElementById('bases');
+  BASES.forEach(([key, label, sub]) => {
+    if (!LAYERS[key]) return;
+    const l = document.createElement('label'); l.className = 'opt';
+    l.innerHTML = `<input type="radio" name="base" value="${key}" ${key === base ? 'checked' : ''}>
+      <span>${label}<span class="sub2">${sub}</span></span>`;
+    l.querySelector('input').addEventListener('change', () => {
+      base = key; timeIdx = -1; document.getElementById('time').value = 0;
+      document.getElementById('framelab').textContent = 'pair view';
+      apply();
+    });
+    bc.appendChild(l);
+  });
+  const oc = document.getElementById('overs');
+  OVERS.forEach(([key, label, sub]) => {
+    if (!LAYERS[key]) return;
+    const l = document.createElement('label'); l.className = 'opt';
+    l.innerHTML = `<input type="checkbox" ${overOn.has(key) ? 'checked' : ''}>
+      <span>${label}<span class="sub2">${sub}</span></span>`;
+    l.querySelector('input').addEventListener('change', e => {
+      e.target.checked ? overOn.add(key) : overOn.delete(key); apply();
+    });
+    oc.appendChild(l);
+  });
+  const pc = document.getElementById('ptopts');
+  const a = document.createElement('label'); a.className = 'opt';
+  a.innerHTML = `<input type="checkbox" checked><span>Show problems
+    <span class="sub2">${DATA.points.length.toLocaleString()} sampled</span></span>`;
+  a.querySelector('input').addEventListener('change', e => { showPts = e.target.checked; draw(); });
+  pc.appendChild(a);
+  const b2 = document.createElement('label'); b2.className = 'opt';
+  b2.innerHTML = `<input type="checkbox"><span>Burned only
+    <span class="sub2">dNBR ≥ 0.27</span></span>`;
+  b2.querySelector('input').addEventListener('change', e => { onlyBurned = e.target.checked; draw(); });
+  pc.appendChild(b2);
+}
+
+function apply() {
+  Object.entries(imgs).forEach(([key, im]) => {
+    const isBase = BASES.some(b => b[0] === key);
+    if (isBase) { im.style.display = (key === base && timeIdx < 0) ? 'block' : 'none'; im.style.opacity = 1; }
+    else { im.style.display = overOn.has(key) ? 'block' : 'none';
+           im.style.opacity = document.getElementById('opacity').value / 100; }
+  });
+  seriesImg.style.display = timeIdx >= 0 ? 'block' : 'none';
+  draw();
+}
+
+/* ---- transform ---- */
+function clamp() {
+  const w = box.clientWidth, h = box.clientHeight;
+  k = Math.max(1, Math.min(24, k));
+  tx = Math.min(0, Math.max(w - w * k, tx));
+  ty = Math.min(0, Math.max(h - h * k, ty));
+}
+function apply_tf() {
+  clamp();
+  world.style.transform = `translate(${tx}px,${ty}px) scale(${k})`;
+  draw();
+}
+function toScreen(lon, lat) {
+  const w = box.clientWidth, h = box.clientHeight;
+  return [((lon - B.west) / W) * w * k + tx, ((B.north - lat) / H) * h * k + ty];
+}
+function toLonLat(px, py) {
+  const w = box.clientWidth, h = box.clientHeight;
+  return [B.west + ((px - tx) / (w * k)) * W, B.north - ((py - ty) / (h * k)) * H];
+}
+
+/* ---- graticule + points ---- */
+const STEPS = [0.2,0.1,0.05,0.02,0.01,0.005,0.002,0.001,0.0005];
+function draw() {
+  const w = box.clientWidth, h = box.clientHeight, dpr = window.devicePixelRatio || 1;
+  if (cv.width !== w * dpr || cv.height !== h * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  // graticule: pick a step giving roughly 5-9 lines across the visible span
+  const span = W / k;
+  let step = STEPS[STEPS.length - 1];
+  for (const s of STEPS) { if (span / s >= 4 && span / s <= 12) { step = s; break; } }
+  const dec = step < 0.005 ? 4 : (step < 0.05 ? 3 : 2);
+  ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--grat').trim();
+  ctx.lineWidth = 1; ctx.font = '10px ui-monospace,Menlo,monospace';
+  ctx.fillStyle = ctx.strokeStyle;
+  const [lon0, lat1] = toLonLat(0, 0), [lon1, lat0] = toLonLat(w, h);
+  ctx.beginPath();
+  for (let x = Math.ceil(lon0 / step) * step; x <= lon1; x += step) {
+    const sx = toScreen(x, 0)[0];
+    ctx.moveTo(Math.round(sx) + .5, 0); ctx.lineTo(Math.round(sx) + .5, h);
+    ctx.fillText(x.toFixed(dec) + '°E', Math.round(sx) + 3, 11);
+  }
+  for (let y = Math.ceil(lat0 / step) * step; y <= lat1; y += step) {
+    const sy = toScreen(0, y)[1];
+    ctx.moveTo(0, Math.round(sy) + .5); ctx.lineTo(w, Math.round(sy) + .5);
+    ctx.fillText(y.toFixed(dec) + '°N', 3, Math.round(sy) - 3);
+  }
+  ctx.stroke();
+
+  if (showPts) {
+    const r = k < 2 ? 1.6 : (k < 6 ? 2.4 : 3.4);
+    for (const p of DATA.points) {
+      if (onlyBurned && p[7] < 0.27) continue;
+      const [sx, sy] = toScreen(p[0], p[1]);
+      if (sx < -8 || sy < -8 || sx > w + 8 || sy > h + 8) continue;
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, 6.284);
+      ctx.fillStyle = p[7] >= 0.27 ? SEVCOL[p[8]] : 'rgba(92,200,218,.75)';
+      ctx.fill();
+      if (k >= 4) { ctx.lineWidth = .8; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.stroke(); }
+    }
+  }
+  // scale bar: metres per screen pixel at this latitude
+  const mPerDeg = 111320 * Math.cos(B.south * Math.PI / 180);
+  const mPerPx = (W / (box.clientWidth * k)) * mPerDeg;
+  const targets = [100, 200, 500, 1000, 2000, 5000];
+  const m = targets.find(t => t / mPerPx > 55) || 5000;
+  scaleEl.textContent = `· ${m >= 1000 ? (m / 1000) + ' km' : m + ' m'} ≈ ${Math.round(m / mPerPx)} px`;
+}
+
+/* ---- interaction ---- */
+let dragging = false, lx = 0, ly = 0;
+box.addEventListener('pointerdown', e => {
+  dragging = true; lx = e.clientX; ly = e.clientY;
+  box.classList.add('dragging'); box.setPointerCapture(e.pointerId);
+});
+box.addEventListener('pointermove', e => {
+  const r = box.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  const [lon, lat] = toLonLat(px, py);
+  coord.textContent = `${lat.toFixed(5)}°N ${lon.toFixed(5)}°E`;
+  if (dragging) {
+    tx += e.clientX - lx; ty += e.clientY - ly; lx = e.clientX; ly = e.clientY;
+    apply_tf(); tip.style.opacity = 0; return;
+  }
+  hover(px, py, e.clientX - r.left, e.clientY - r.top);
+});
+box.addEventListener('pointerup', e => {
+  dragging = false; box.classList.remove('dragging'); box.releasePointerCapture(e.pointerId);
+});
+box.addEventListener('pointerleave', () => { tip.style.opacity = 0; coord.textContent = '—'; });
+box.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = box.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top;
+  const f = Math.exp(-e.deltaY * 0.0016), nk = Math.max(1, Math.min(24, k * f));
+  tx = px - (px - tx) * (nk / k); ty = py - (py - ty) * (nk / k); k = nk; apply_tf();
+}, { passive: false });
+
+function zoomBy(f) {
+  const w = box.clientWidth / 2, h = box.clientHeight / 2;
+  const nk = Math.max(1, Math.min(24, k * f));
+  tx = w - (w - tx) * (nk / k); ty = h - (h - ty) * (nk / k); k = nk; apply_tf();
+}
+document.getElementById('zin').onclick = () => zoomBy(1.5);
+document.getElementById('zout').onclick = () => zoomBy(1 / 1.5);
+document.getElementById('zreset').onclick = () => { k = 1; tx = 0; ty = 0; apply_tf(); };
+
+function hover(px, py) {
+  if (!showPts) { tip.style.opacity = 0; return; }
+  let best = null, bd = 14 * 14;
+  for (const p of DATA.points) {
+    if (onlyBurned && p[7] < 0.27) continue;
+    const [sx, sy] = toScreen(p[0], p[1]);
+    const d = (sx - px) * (sx - px) + (sy - py) * (sy - py);
+    if (d < bd) { bd = d; best = p; }
+  }
+  if (!best) { tip.style.opacity = 0; return; }
+  const grade = best[3] >= 0 ? DATA.grades[best[3]] : '—';
+  const area = best[4] >= 0 ? DATA.areas[best[4]] : '—';
+  const circ = best[5] >= 0 ? DATA.circuits[best[5]] : null;
+  const num = best[6] ? ' #' + best[6] : '';
+  tip.innerHTML = `<b>${best[2] || 'unnamed'}</b> <span class="g">${grade}</span><br>
+    ${area}${circ ? ` · ${circ}${num}` : ''}<br>
+    dNBR <span class="g">${best[7].toFixed(2)}</span> · ${SEV[best[8]]}
+    ${best[9] ? '<br><span style="opacity:.7">± not resolved at this scale</span>' : ''}`;
+  tip.style.left = Math.min(px + 14, box.clientWidth - 240) + 'px';
+  tip.style.top = Math.max(4, py - 10) + 'px';
+  tip.style.opacity = 1;
+}
+
+/* ---- time series ---- */
+const timeEl = document.getElementById('time'), lab = document.getElementById('framelab');
+if (SERIES.length) {
+  timeEl.max = SERIES.length - 1;
+  timeEl.addEventListener('input', () => setFrame(+timeEl.value));
+  let playing = null;
+  document.getElementById('play').onclick = e => {
+    if (playing) { clearInterval(playing); playing = null; e.target.textContent = '▶'; return; }
+    e.target.textContent = '❚❚';
+    playing = setInterval(() => {
+      const n = (+timeEl.value + 1) % SERIES.length;
+      timeEl.value = n; setFrame(n);
+    }, 420);
+  };
+  setFrame(0);
+} else { lab.textContent = 'no series'; }
+
+function setFrame(i) {
+  const f = SERIES[i]; if (!f) return;
+  timeIdx = i; seriesImg.src = f.img;
+  const v = f.valid == null ? '—' : f.valid.toFixed(0) + '% usable';
+  lab.innerHTML = `<b>${f.date}</b> · ${f.cloud}% cloud · ${v}`;
+  apply();
+}
+
+buildControls();
+document.getElementById('opacity').addEventListener('input', apply);
+new ResizeObserver(() => apply_tf()).observe(box);
+apply(); apply_tf();
+</script>

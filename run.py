@@ -14,13 +14,14 @@ import json
 
 import numpy as np
 
-from bleau_fire import burn, climbing, features, ign, landcover, render
+from bleau_fire import boulders, burn, climbing, features, ign, landcover, render
 from bleau_fire.config import (
     AOI, MASK_CLASSES, OUT_DIR, POST_SCENE, PRE_SCENE, build_grid,
 )
 from bleau_fire.mask import scar_shadow_overlap, valid_mask
+from bleau_fire.raster import read_on_grid, to_reflectance
 from bleau_fire.scenes import fetch_scene, probe_scene, read_scene, scene_path
-from bleau_fire.search import search, summarise
+from bleau_fire.search import boa_offset, search, summarise
 
 # Trois Pignons — the dense bouldering core, inside the ~1,500 ha Noisy-sur-Ecole sector.
 ZOOM_TROIS_PIGNONS = (2.495, 48.355, 2.560, 48.398)
@@ -213,6 +214,99 @@ def cmd_sample(args):
     print(f"\n[out] {csv}\n[out] {gj}")
 
 
+def cmd_problems(args):
+    """Per-problem and per-circuit burn severity from Boolder's 19k-problem database."""
+    grid = build_grid()
+    pre_arrays, pre_meta = read_scene(scene_path(args.pre))
+    post_arrays, post_meta = read_scene(scene_path(args.post))
+
+    delta = burn.dnbr(
+        burn.nbr(pre_arrays["nir"], pre_arrays["swir22"]),
+        burn.nbr(post_arrays["nir"], post_arrays["swir22"]),
+    )
+    ok = valid_mask(pre_arrays["scl"].astype("uint8"), MASK_CLASSES) & valid_mask(
+        post_arrays["scl"].astype("uint8"), MASK_CLASSES
+    )
+
+    gdf = boulders.clip(boulders.load(), AOI)
+    print(f"[data] {len(gdf)} Boolder problems inside the AOI "
+          f"({gdf['area_name'].nunique()} areas, {gdf['circuit_color'].notna().sum()} in circuits)")
+
+    df = features.sample(gdf, delta, grid, radius=args.radius, valid=ok)
+    burned = df[df["dnbr_median"] >= 0.27]
+    print(f"[burn] {len(burned)} of {int(df['dnbr_median'].notna().sum())} problems "
+          f"at moderate-low severity or worse "
+          f"({100 * len(burned) / max(int(df['dnbr_median'].notna().sum()), 1):.1f}%)")
+    print(f"[unc ] {int(df['edge'].fillna(False).sum())} unresolved at the burn edge")
+
+    areas = boulders.area_rollup(df)
+    print("\n  worst-hit areas (>=10 problems):")
+    print(areas.head(18).to_string(index=False))
+
+    circ = boulders.circuit_rollup(df)
+    print(f"\n  worst-hit circuits (>=5 problems), {len(circ)} circuits total:")
+    print(circ.head(18).to_string(index=False))
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    keep = [c for c in df.columns if c != "geometry"]
+    df[keep].to_csv(OUT_DIR / "problems_severity.csv", index=False)
+    areas.to_csv(OUT_DIR / "areas_severity.csv", index=False)
+    circ.to_csv(OUT_DIR / "circuits_severity.csv", index=False)
+    print(f"\n[out] {OUT_DIR / 'problems_severity.csv'} and area/circuit rollups")
+
+
+def cmd_quicklooks(args):
+    """Render every pass in the window, cloud and all, as a consistent-stretch JPEG series.
+
+    Deliberately includes unusable scenes. A scrubbable series where some frames are solid
+    cloud and some are half-empty swath tells you more about what working with optical EO is
+    actually like than a curated set of eight clear days.
+    """
+    from PIL import Image
+
+    grid = build_grid(resolution=args.resolution)
+    print(f"[grid] {grid.describe()}")
+    items = search(args.start, args.end, max_cloud=100.0)
+    qdir = OUT_DIR / "series"
+    qdir.mkdir(parents=True, exist_ok=True)
+
+    quality = {q["id"]: q for q in json.loads((OUT_DIR / "scene_quality.json").read_text())} \
+        if (OUT_DIR / "scene_quality.json").exists() else {}
+
+    frames = []
+    for n, item in enumerate(items, 1):
+        out = qdir / f"{item['properties']['datetime'][:10]}_{item['id']}.jpg"
+        if not out.exists() or args.refresh:
+            assets = item["assets"]
+            offset = boa_offset(item)
+            try:
+                rgb = np.stack([
+                    to_reflectance(read_on_grid(assets[b]["href"], grid), offset)
+                    for b in ("red", "green", "blue")
+                ], axis=-1)
+            except Exception as exc:
+                print(f"  [{n}/{len(items)}] {item['id']}: {type(exc).__name__}, skipped")
+                continue
+            # Fixed stretch, NOT per-scene percentiles. A per-frame stretch makes the series
+            # flicker and hides exactly the thing worth seeing — that some passes are cloud.
+            img = np.clip(np.nan_to_num(rgb) / 0.30, 0, 1)
+            Image.fromarray((img * 255).astype("uint8")).save(
+                out, "JPEG", quality=78, optimize=True
+            )
+        q = quality.get(item["id"], {})
+        frames.append({
+            "id": item["id"], "date": item["properties"]["datetime"][:10],
+            "file": out.name,
+            "cloud": round(float(item["properties"].get("eo:cloud_cover", 0)), 1),
+            "valid": q.get("aoi_valid_pct"), "nodata": q.get("aoi_nodata_pct"),
+        })
+        print(f"  [{n}/{len(items)}] {frames[-1]['date']}  cloud={frames[-1]['cloud']:5.1f}%  "
+              f"valid={frames[-1]['valid']}  {out.name}")
+
+    (qdir / "frames.json").write_text(json.dumps(frames, indent=2))
+    print(f"\n[out] {len(frames)} frames -> {qdir}")
+
+
 def cmd_vectors(args):
     """Fetch the IGN land-cover layers and the OSM walking network."""
     for key in ("bdforet", "rpg", "roads"):
@@ -340,6 +434,19 @@ def main():
     f.add_argument("--radius", type=int, default=2,
                    help="sampling window radius in pixels (default 2 -> 50 m)")
     f.set_defaults(func=cmd_sample)
+
+    pr = sub.add_parser("problems", help="per-problem/circuit severity from Boolder data")
+    pr.add_argument("--pre", default=PRE_SCENE)
+    pr.add_argument("--post", default=POST_SCENE)
+    pr.add_argument("--radius", type=int, default=2)
+    pr.set_defaults(func=cmd_problems)
+
+    ql = sub.add_parser("quicklooks", help="render every pass as a scrubbable JPEG series")
+    ql.add_argument("--start", default="2026-04-01")
+    ql.add_argument("--end", default="2026-08-13")
+    ql.add_argument("--resolution", type=float, default=20.0)
+    ql.add_argument("--refresh", action="store_true")
+    ql.set_defaults(func=cmd_quicklooks)
 
     v = sub.add_parser("vectors", help="fetch IGN land-cover layers and OSM paths")
     v.add_argument("--refresh", action="store_true")

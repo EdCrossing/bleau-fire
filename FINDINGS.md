@@ -129,22 +129,47 @@ signal rather than a weak one — which reads as success.
 
 ---
 
-## F3 — OSM's problem-level detail does not exist where the fire was
+## F3 — OSM's problem-level detail does not exist where the fire was — **now resolved**
 
-**Holds, and it bounds what this project can claim.** All 724 `route_bottom` features (the
-individual problems, and the only ones carrying Font grade and circuit membership) fall in just
-**three locations**: 509 around Bas Cuvier / Apremont, 202 at Roche aux Sabots, 13 adjacent.
+**Held for OSM.** All 724 `route_bottom` features (the individual problems, and the only ones
+carrying Font grade and circuit membership) fell in just **three locations**: 509 around Bas
+Cuvier / Apremont, 202 at Roche aux Sabots, 13 adjacent. All three unburned. So "0 of 724
+problems burned" was true and almost meaningless — it described OSM's mapping effort, not the
+fire, and reporting per-circuit percentages from it would have read as "no circuits burned".
 
-All three are unburned. So "0 of 724 problems burned" is true and almost meaningless — it
-describes OSM's mapping effort, not the fire.
+**Resolved by switching source.** [Boolder](https://github.com/boolder-org/boolder-data)
+publishes the database behind its Fontainebleau apps as SQLite under **CC BY 4.0**: 19,137
+problems with coordinates, Font grade, circuit colour and circuit number, plus 271 circuits and
+90 areas. **17,605 fall inside the AOI and sample successfully** — 24× OSM's coverage, and
+crucially it covers the burned sectors.
 
-**Consequence:** the per-circuit answer, which was the most attractive output, **cannot be
-produced for the burned sectors** from OSM alone. The crag- and boulder-level answer stands
-(27 named features affected). Circuit-level would need bleau.info's own data; OSM carries
-`ref:bleau.info` on 223 features, so the join exists, but the coverage does not.
+Not UKC or 27 Crags: both prohibit scraping in their terms, and a paid subscription grants
+access rather than redistribution rights — which matters for a public repo. Boolder is licensed
+for reuse with attribution and carries `bleau_info_id`, matching OSM's `ref:bleau.info`.
 
-Reporting per-circuit percentages computed only over mapped sectors would be badly misleading —
-it would read as "no circuits burned".
+### The answer the earlier data could not give
+
+**1,153 of 17,605 problems (6.5%)** sit at moderate-low severity or worse.
+
+| Area | Circuit | Problems | dNBR median | Burned |
+|---|---|---|---|---|
+| Rocher du Général | yellow | 41 | 0.44 | **100%** |
+| Rocher Guichot | orange | 31 | 0.36 | **100%** |
+| Rocher Guichot | blue | 20 | 0.35 | 95% |
+| Rocher de la Cathédrale | orange | 44 | 0.42 | 91% |
+| Mont Aigu | orange | 64 | 0.33 | 86% |
+| Cul de Chien | blue | 74 | 0.31 | 64% |
+
+Every Apremont sector reads 0%. 95.2 comes out at 0.3% despite sitting beside the scar — the
+fire stopped at its edge.
+
+⚠️ **Circuits are keyed by (area, colour), not colour alone.** The same colour recurs across
+dozens of sectors; pooling by colour produced a meaningless massif-wide average in the first
+attempt.
+
+⚠️ The `edge` flag fires on 1,950 problems — high, and expected: at problem scale a patchy scar
+means many individual rocks sit in mixed 50 m windows. **The circuit-level percentage is the
+robust statement; a single problem's class is not.** More problems did not buy more precision.
 
 ---
 
