@@ -260,6 +260,73 @@ The **marginal descriptions** stand, since they are observed means rather than m
 
 ---
 
+## F7 — The two days this fire burned are the two most extreme fire-weather days since 1940
+
+**Holds, and it is the strongest result in the project.**
+
+The Canadian Fire Weather Index computed from ERA5 hourly surface data (via Open-Meteo's
+archive), **1940 to 2026 — 759,288 hours, 31,637 daily FWI values**, spun up from 1 January each
+decade so the long-memory drought codes carry real state rather than startup defaults.
+
+| Rank | Date | FWI | Temp | RH | Wind | DC |
+|---|---|---|---|---|---|---|
+| **1** | **2026-07-13** | **61.8** | 33.7 °C | 22% | 17.9 km/h | 496 |
+| **2** | **2026-07-12** | **58.5** | 33.0 °C | 25% | 16.5 km/h | 486 |
+| 3 | 2019-07-25 | 57.5 | 38.7 °C | 23% | 13.8 km/h | 500 |
+| 4 | 2022-07-19 | 53.4 | 37.0 °C | 23% | 15.5 km/h | 464 |
+| 5 | 1976-08-22 | 52.5 | 24.6 °C | 27% | 20.5 km/h | 722 |
+
+The fire ignited on 12 July and made its main run on 12–13 July. **Those are ranks 2 and 1 in an
+86-year record.** 12 July sits at the **99.99th percentile of all days** and the 99.93rd of July
+days specifically — the fairer comparison, since ranking a July day against Februaries flatters
+it for free.
+
+Summer 2026 (JJA) mean FWI is **26.46 against a 1940–2025 mean of 10.17 — rank 87 of 87.** The
+most extreme fire-weather summer in the record, not merely a bad day inside a normal one. The
+Drought Code reached 486, indicating months of accumulated deficit rather than a hot week.
+
+### This reframes F6 rather than contradicting it
+
+F6 found that terrain, fuel and access explain nothing about severity *within* the fire that
+transfers spatially. F7 says the *occurrence* of the fire is almost perfectly explained by
+weather. Those are consistent, and together they say something more useful than either alone:
+**for this event the informative variance is in the "when", not the "where within".** A model of
+where-it-burned-hardest had little to find; a model of when-a-fire-is-possible had a great deal.
+
+### Wind direction does **not** explain the observed spread geometry
+
+Wind on the initial run (12 July, 10:00–20:00) blew toward **239°** at 16 km/h gusting 40. Over
+13–15 July, while the fire grew before containment on the evening of the 14th, it blew toward
+**211°** at 10 km/h.
+
+Measured spread, using a 13 July Sentinel-2 scene (during the fire) against 20 July:
+
+- 732 ha burned by 13 July, 1,136 ha by 20 July — **60% of the final scar arrived after the 13th**
+- Main sector (971 ha): growth centroid displaced 1,127 m toward **292°**
+- Angular difference from wind: **81°**
+
+**Refuted — my own first version of this analysis.** Pooling both fire sectors into one centroid
+gave a 3,779 m shift toward 080°, which I nearly reported. That is an artefact: the fire had
+**two sectors ~8 km apart**, and when one grows later the combined centroid lurches toward it and
+reads as an eight-kilometre "spread". Two separate fires are not one object with a centroid. Now
+computed per connected component; the second sector (426 ha) has too little early-vs-late split
+to test at all.
+
+Even corrected, the honest verdict is that **this method is too crude to conclude much**:
+
+- **Suppression targets the head of the fire** — the downwind edge, by definition. Four Canadairs,
+  two Dash aircraft and three helicopters made 187 drops. A fire actively prevented from running
+  downwind while creeping elsewhere will show exactly this signature, so "spread ≠ wind" may be
+  measuring firefighting rather than fire behaviour.
+- Growth is constrained by fuel continuity, roads and firebreaks, none of which are downwind.
+- A centroid displacement is a poor summary of an irregular perimeter's growth.
+
+So: no support for wind-aligned spread here, and no confidence that its absence means anything.
+A proper test needs the fire's actual progression isochrones (Copernicus EMS produced them for
+EMSR894), not two satellite passes and a centroid.
+
+---
+
 ## Open
 
 - Validate severity classes against EMSR894's independent grading rather than asserting

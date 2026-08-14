@@ -130,7 +130,7 @@ footer { margin-top:56px; padding-top:22px; border-top:1px solid var(--line);
   <div class="stat"><span class="v">__N_BURNED__</span><span class="k">problems at moderate-low severity or worse</span></div>
   <div class="stat"><span class="v">__FOREST_HA__</span><span class="k">hectares of forest burned (dNBR ≥ 0.27)</span></div>
   <div class="stat"><span class="v">100%</span><span class="k">of Rocher du Général's yellow circuit</span></div>
-  <div class="stat"><span class="v">__N_FRAMES__</span><span class="k">satellite passes, cloud included</span></div>
+  <div class="stat"><span class="v">1st &amp; 2nd</span><span class="k">most extreme fire-weather days since 1940</span></div>
 </div>
 
 <section>
@@ -204,6 +204,46 @@ footer { margin-top:56px; padding-top:22px; border-top:1px solid var(--line);
   sand and burns to complete consumption, exposing bright substrate that is highly reflective in
   SWIR — so over heath the index substantially measures <em>the sand revealed</em>, not the energy
   released.</p>
+</section>
+
+<section>
+  <div><p class="eyebrow">Fire weather</p><h2>The two most extreme days since 1940</h2></div>
+  <p class="cap">Canadian Fire Weather Index from ERA5 hourly data, 1940&ndash;2026 &mdash; 759,288
+  hours, 31,637 daily values, spun up so the long-memory drought codes carry real state. The fire
+  ignited on 12 July and made its main run on the 13th.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Rank</th><th>Date</th><th>FWI</th><th>Temp</th><th>RH</th><th>Wind</th><th>Drought code</th></tr></thead>
+    <tbody>
+      <tr><td class="num strong">1</td><td class="nm">2026-07-13</td><td class="num strong">61.8</td><td class="num">33.7&deg;C</td><td class="num">22%</td><td class="num">17.9</td><td class="num">496</td></tr>
+      <tr><td class="num strong">2</td><td class="nm">2026-07-12</td><td class="num strong">58.5</td><td class="num">33.0&deg;C</td><td class="num">25%</td><td class="num">16.5</td><td class="num">486</td></tr>
+      <tr><td class="num">3</td><td>2019-07-25</td><td class="num">57.5</td><td class="num">38.7&deg;C</td><td class="num">23%</td><td class="num">13.8</td><td class="num">500</td></tr>
+      <tr><td class="num">4</td><td>2022-07-19</td><td class="num">53.4</td><td class="num">37.0&deg;C</td><td class="num">23%</td><td class="num">15.5</td><td class="num">464</td></tr>
+      <tr><td class="num">5</td><td>1976-08-22</td><td class="num">52.5</td><td class="num">24.6&deg;C</td><td class="num">27%</td><td class="num">20.5</td><td class="num">722</td></tr>
+    </tbody>
+  </table></div>
+  <p class="cap">Summer 2026 averaged an FWI of <strong>26.5 against a 1940&ndash;2025 mean of
+  10.2 &mdash; rank 87 of 87</strong>. Not a bad day inside a normal summer; the most extreme
+  fire-weather summer in the record.</p>
+</section>
+
+<section>
+  <div><p class="eyebrow">A null result worth keeping</p><h2>What did <em>not</em> explain severity</h2></div>
+  <p class="cap">Given the fire reached a place, what determined how hard it burned there?
+  Elevation, slope, aspect, distance to the track network, pre-fire vegetation condition and fuel
+  class, over 60,000 pixels sampled from inside the footprint eroded by 120&nbsp;m.</p>
+  <div class="tablewrap"><table>
+    <thead><tr><th>Validation</th><th>R&sup2;</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td class="nm">Random 5-fold</td><td class="num">+0.392</td><td class="sub">Looks like a working model</td></tr>
+      <tr><td class="nm">Spatially blocked 5-fold</td><td class="num strong">&minus;0.185</td><td class="sub">Worse than predicting the mean</td></tr>
+    </tbody>
+  </table></div>
+  <p class="cap">A negative R&sup2; means <strong>no transferable skill at all</strong>. The
+  random score was measuring spatial autocorrelation &mdash; with shuffled folds, test pixels sit
+  metres from training pixels, so the model scores well by recognising the neighbourhood. The tell
+  was the random folds being implausibly tight: <span class="mono">0.394, 0.397, 0.386, 0.387,
+  0.395</span>. Together with the weather result this says the informative variance for this fire
+  is in the <em>when</em>, not the <em>where within</em>.</p>
 </section>
 
 <section>

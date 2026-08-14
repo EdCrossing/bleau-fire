@@ -23,7 +23,7 @@ OUT = ROOT / "data" / "out"
 SERIES = OUT / "series"
 
 # Series frames get their own budget: many small frames beat few large ones for a scrubber.
-SERIES_WIDTH, SERIES_QUALITY = 1100, 68
+SERIES_WIDTH, SERIES_QUALITY = 950, 60
 
 
 def uri(path: Path) -> str:
