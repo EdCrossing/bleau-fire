@@ -327,6 +327,74 @@ EMSR894), not two satellite passes and a centroid.
 
 ---
 
+## F8 — TROPOMI saw the plume, and it confirms the wind that the burn scar could not
+
+**Holds.** Sentinel-5P / TROPOMI, read from MEEO's anonymous AWS COGs (`meeo-s5p`), against a
+median of 8–10 July as baseline. This is the first evidence in the project from a **different
+satellite, instrument and physical principle** — atmospheric absorption rather than surface
+reflectance — so it is genuinely independent of everything else here.
+
+### 13 July, the day of the main run
+
+| Product | Peak anomaly | Distance from fire | Bearing |
+|---|---|---|---|
+| UV Aerosol Index | **+2.31** | 18 km | **264°** |
+| CO total column | **+0.062 mol/m²** | 2 km | — |
+
+The CO enhancement more than **doubles** the regional background (~0.029 mol/m²) and sits
+essentially on the fire — 2 km is well inside one TROPOMI pixel, so its bearing is not
+meaningful. The whole upper tail moved with it (p99 rose from 0.033 on 8 July to 0.050 on the
+13th), so this is not one noisy pixel.
+
+**The aerosol maximum is the useful one.** An Aerosol Index of +2.3 is unambiguous absorbing
+aerosol, and it sits **18 km west of the fire at bearing 264°**. Wind on the initial run blew
+toward **239°**. That is a **25° agreement** — well within what a 5.5 × 3.5 km footprint can
+resolve.
+
+### Why this matters for F7
+
+F7 tried to confirm wind direction from burn-scar growth and failed (81° discrepancy), and I
+argued the test was untrustworthy because **suppression targets the downwind head of a fire** —
+aircraft and crews attack exactly where the wind is pushing it. The plume cannot be confounded
+that way: nobody was water-bombing the smoke. So the atmospheric evidence supports downwind
+transport where the ground evidence could not, and the disagreement between them is itself the
+argument that the scar-geometry method was measuring firefighting.
+
+### 12 July shows nothing, and that is the timing, not the fire
+
+On the ignition day the peak anomalies are +0.30 (AI) and +0.012 (CO), both >100 km away —
+i.e. background. Sentinel-5P crosses at ~12:00 UTC and the fire ignited that day and made its
+run into the afternoon and the 13th. **The satellite passed before there was much to see.**
+
+### Refuted — my own orbit selection silently deleted the ignition day
+
+The first version picked the single orbit whose sensing window was closest to local noon. TROPOMI
+flies 14 orbits a day and each swath is a strip: the nearest-in-time orbit can miss the region
+entirely, returning an all-NaN array that is **indistinguishable from "the instrument saw
+nothing"**. It reported 0% coverage for 10 and 12 July — including the ignition day — and I
+nearly wrote that up as absence of signal. Fixed by trying candidates in time order and keeping
+the first with real coverage. All six days now return 100% (or near) coverage.
+
+General form: **an empty result from a data-access layer must be distinguishable from an empty
+result from the instrument.** They are not the same claim and they should never share a code path
+that cannot tell them apart.
+
+### CAMS surface air quality is inconclusive, and says so
+
+CAMS European surface fields (via Open-Meteo, no key) sampled on a ring of 16 points at 25 and
+60 km. PM2.5 rose **+1.02 µg/m³ across the whole ring** during 12–14 July — a broad regional
+increase consistent with heatwave stagnation rather than a plume. The downwind-minus-upwind
+contrast is only **+0.48 µg/m³**, and the largest PM2.5 rise is to the *south* (135–180°), not
+the west-south-west.
+
+CO is somewhat cleaner: positive on the west and south-west (+8 to +9) and **negative to the
+north** (−6.6), which is directionally consistent with transport toward ~239°. But a modelled
+surface field at ~11 km resolution, driven by fire emissions it may or may not have assimilated,
+is weak evidence either way. **The TROPOMI observation is the one to rely on**; CAMS is a model
+and here it mostly shows the heatwave.
+
+---
+
 ## Open
 
 - Validate severity classes against EMSR894's independent grading rather than asserting
