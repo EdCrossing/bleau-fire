@@ -395,6 +395,58 @@ and here it mostly shows the heatwave.
 
 ---
 
+## F9 — The plume was mostly *inside* an unusually deep boundary layer, not lofted above it
+
+**Partially holds; the hypothesis it was built to test does not.**
+
+F8 left a tension: TROPOMI saw a strong plume (AI +2.31) while CAMS surface PM2.5 barely moved.
+The obvious reconciliation is that the smoke was injected **above** the mixing height, decoupled
+from the surface. Tested by comparing TROPOMI's retrieved aerosol mid-height against ERA5
+boundary-layer height at the same place and hour.
+
+Restricted to pixels that are both quality-flagged (`qa ≥ 0.5`) **and** independently confirmed
+as smoke by the Aerosol Index (`AI ≥ 1.0`) — because the layer-height retrieval assumes a single
+scattering layer and will fit one to clear air perfectly happily.
+
+| Date | Confirmed-smoke px | BLH at 12:00 UTC | Smoke height median | Above BLH |
+|---|---|---|---|---|
+| 2026-07-09 | **0** | 1,425 m | — | — |
+| **2026-07-13** | **313** | **1,865 m** | **825 m** (IQR 310–2,186, max 3,899) | **35%** |
+| 2026-07-14 | **0** | 1,805 m | — | — |
+
+**The control works.** Zero confirmed-smoke pixels on the baseline day and on the day after,
+313 on the fire day, at a mean bearing of **264°** and mean distance **23 km** — reproducing F8's
+geometry from an entirely separate product.
+
+### The lofting hypothesis is not supported
+
+Median smoke height is **825 m against a boundary layer of 1,865 m**, so the *bulk* of the plume
+was within the mixed layer, not above it. Only **35% of pixels** sit above the boundary-layer
+top, with a tail to 3.9 km.
+
+### The better explanation is the depth of the mixed layer itself
+
+Boundary-layer height on 13 July reached **2,320 m**, against 1,535 m on the pre-fire baseline —
+deep convective mixing on a 35 °C day. **Smoke stirred through two kilometres of atmosphere is
+heavily diluted by the time it reaches the surface.** That explains a strong column signal and a
+weak surface one without needing the plume to be decoupled at all, and it is supported by our own
+ERA5 field rather than assumed.
+
+So F8's surface/column discrepancy is resolved, but by dilution rather than by lofting — the
+opposite mechanism to the one I proposed.
+
+### What would overturn this
+
+- The IQR is **310–2,186 m**: enormous. The retrieval is noisy at this plume's optical depth and
+  the 35% figure is soft.
+- AER_LH is documented as **biased low** over bright surfaces and thin plumes, which would push
+  the true fraction above the boundary layer *upward*. The lofted share is therefore a lower
+  bound, and "mostly within the mixed layer" is the weaker of the two claims here.
+- One overpass, one day. Injection height varies through a fire's diurnal cycle and the 12:00 UTC
+  crossing precedes the afternoon peak.
+
+---
+
 ## Open
 
 - Validate severity classes against EMSR894's independent grading rather than asserting

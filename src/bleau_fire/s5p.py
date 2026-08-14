@@ -52,7 +52,10 @@ S5P_ENV = dict(
 PRODUCTS = {
     "aer_ai": ("L2__AER_AI", "PRODUCT_aerosol_index_340_380"),
     "co": ("L2__CO____", "PRODUCT_carbonmonoxide_total_column"),
-    "aer_lh": ("L2__AER_LH", "PRODUCT_aerosol_layer_height"),
+    # NB the variable is "aerosol_mid_height", not "aerosol_layer_height" — the retrieval
+    # reports the mid-altitude of a single assumed scattering layer, not a layer thickness.
+    "aer_lh": ("L2__AER_LH", "PRODUCT_aerosol_mid_height"),
+    "aer_lp": ("L2__AER_LH", "PRODUCT_aerosol_mid_pressure"),
     "no2": ("L2__NO2___", "PRODUCT_nitrogendioxide_tropospheric_column"),
 }
 
@@ -120,6 +123,17 @@ def read_bbox(key: str, bbox: tuple[float, float, float, float], *, width: int =
                            resampling=Resampling.bilinear) as vrt:
                 arr = vrt.read(1, masked=True)
     return arr.astype("float32").filled(np.nan), transform
+
+
+def qa_key_for(key: str) -> str:
+    """The qa_value COG belonging to the same granule as `key`.
+
+    ⚠️ **Aerosol layer height must be quality-filtered or it is meaningless.** The retrieval
+    solves for the mid-altitude of a *single assumed scattering layer*; over a clear scene there
+    is no such layer and it returns a fitted number anyway. Reading it unfiltered produces a
+    full field of confident-looking heights for air containing nothing.
+    """
+    return re.sub(r"PRODUCT_[a-z0-9_]+_4326\.tif$", "PRODUCT_qa_value_4326.tif", key)
 
 
 def candidate_orbits(keys: list[str], product: str, *, hour_utc: float = 12.0) -> list[str]:
