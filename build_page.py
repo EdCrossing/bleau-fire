@@ -11,6 +11,7 @@ from __future__ import annotations
 import base64
 import html
 import json
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -22,8 +23,25 @@ LAYERS = WEB / "layers"
 OUT = ROOT / "data" / "out"
 SERIES = OUT / "series"
 
-# Series frames get their own budget: many small frames beat few large ones for a scrubber.
-SERIES_WIDTH, SERIES_QUALITY = 720, 50
+# Two build profiles, because the two destinations have different constraints.
+#
+#   full    — GitHub Pages. No size cap, so nothing is degraded.
+#   compact — a published Artifact, which must stay under 16 MB *after* base64 inflates
+#             everything by a third. Layers are re-encoded smaller and the series is coarser.
+#
+# Frames are sized by how much they actually show: a pass that saw 3% of the area is almost
+# entirely flat hatched nodata, so spending resolution on it buys nothing.
+FULL = "--full" in sys.argv
+PROFILE = "full" if FULL else "compact"
+SEEN_MIN = 50.0
+if FULL:
+    SERIES_GOOD, SERIES_EMPTY = (1500, 76), (760, 52)
+    LAYER_MAX = {}                      # keep every layer as exported
+else:
+    SERIES_GOOD, SERIES_EMPTY = (1000, 64), (600, 45)
+    LAYER_MAX = {"rgb_pre": 2100, "rgb_post": 2100, "ortho_now": 1800,
+                 "ortho1950": 1800, "etatmajor": 1900, "anciennes": 1700}
+SHRUNK = WEB / "_shrunk"
 
 
 def uri(path: Path) -> str:
@@ -48,13 +66,34 @@ OVERLAYS = [
     ("anciennes", "Ancient woodland", "Continuously wooded since the 1820–66 survey."),
     ("footprint", "Fire footprint", "Derived here, not official — see note below."),
 ]
+CONTEXT_LAYERS = [("ctx_map", "", ""), ("ctx_ortho", "", "")]
+
+def sized(key: str, path: Path) -> Path:
+    """Re-encode a layer smaller for the compact profile, caching the result."""
+    cap = LAYER_MAX.get(key)
+    if not cap:
+        return path
+    im = Image.open(path)
+    if im.width <= cap:
+        return path
+    SHRUNK.mkdir(parents=True, exist_ok=True)
+    out = SHRUNK / f"{PROFILE}_{key}{path.suffix}"
+    if not out.exists():
+        r = im.resize((cap, round(im.height * cap / im.width)),
+                      Image.NEAREST if path.suffix == ".png" else Image.LANCZOS)
+        if path.suffix == ".png":
+            r.save(out, "PNG", optimize=True)
+        else:
+            r.convert("RGB").save(out, "JPEG", quality=80, optimize=True, progressive=True)
+    return out
+
 
 layer_uris = {}
-for key, *_ in BASE_LAYERS + OVERLAYS:
+for key, *_ in BASE_LAYERS + OVERLAYS + CONTEXT_LAYERS:
     for ext in (".jpg", ".png"):
         p = LAYERS / f"{key}{ext}"
         if p.exists():
-            layer_uris[key] = uri(p)
+            layer_uris[key] = uri(sized(key, p))
             break
 
 # ---------------------------------------------------------------------------
@@ -78,12 +117,14 @@ for fm in frames_meta:
     src = SERIES / fm["file"]
     if not src.exists():
         continue
-    small = SERIES / "web" / fm["file"]
+    seen = fm.get("valid")
+    w, q = SERIES_GOOD if (seen is None or seen >= SEEN_MIN) else SERIES_EMPTY
+    small = SERIES / "web" / PROFILE / f"{w}_{q}_{fm['file']}"
     small.parent.mkdir(parents=True, exist_ok=True)
     if not small.exists():
         im = Image.open(src).convert("RGB")
-        im = im.resize((SERIES_WIDTH, int(im.height * SERIES_WIDTH / im.width)), Image.LANCZOS)
-        im.save(small, "JPEG", quality=SERIES_QUALITY, optimize=True, progressive=True)
+        im = im.resize((w, int(im.height * w / im.width)), Image.LANCZOS)
+        im.save(small, "JPEG", quality=q, optimize=True, progressive=True)
     series.append({
         "date": fm["date"], "cloud": fm["cloud"],
         "valid": fm.get("valid"), "img": uri(small),
@@ -118,7 +159,8 @@ for lon, lat, name, grade, area, circuit, num, dnbr, sev, edge in raw["points"]:
     ])
 
 POINTS = {
-    "bounds": raw["bounds"], "areas": areas, "circuits": circuits, "grades": grades,
+    "bounds": raw["bounds"], "context_bounds": raw.get("context_bounds"),
+    "areas": areas, "circuits": circuits, "grades": grades,
     "fuel_labels": raw["fuel_labels"], "fuel_colours": raw["fuel_colours"], "points": pts,
 }
 
@@ -244,6 +286,9 @@ HTML = (
 
 out = WEB / "index.html"
 out.write_text(HTML)
-print(f"wrote {out}  {out.stat().st_size / 1e6:.2f} MB")
+nice = sum(1 for f in frames_meta if (f.get("valid") or 0) >= SEEN_MIN)
+print(f"wrote {out}  {out.stat().st_size / 1e6:.2f} MB  [profile: {PROFILE}]")
+print(f"  series: {nice} passes at {SERIES_GOOD[0]}px, "
+      f"{len(series) - nice} near-empty at {SERIES_EMPTY[0]}px")
 print(f"  {len(series)} series frames · {len(pts):,} points · {len(layer_uris)} layers")
 print(f"  {n_burned:,}/{n_total:,} problems burned")

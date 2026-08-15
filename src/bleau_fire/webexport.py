@@ -41,15 +41,33 @@ HISTORIC = {
     "ortho_now": "ORTHOIMAGERY.ORTHOPHOTOS",
 }
 
+# Layers whose colours ARE their data. Stored lossless — see fetch_wms.
+CATEGORICAL = {"anciennes"}
+
+# A wider region drawn behind everything, so zooming out shows where in France this is rather
+# than the AOI floating on black. Roughly 2.3 x 1.7 degrees — Paris to Orleans.
+CONTEXT_BBOX: tuple[float, float, float, float] = (1.30, 47.70, 3.90, 49.30)
+CONTEXT = {
+    "ctx_map": "GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2",
+    "ctx_ortho": "ORTHOIMAGERY.ORTHOPHOTOS",
+}
+
 
 def fetch_wms(
     layer: str, out: Path, *, bbox: tuple[float, float, float, float] = AOI,
-    width: int = 2000, refresh: bool = False,
+    width: int = 2000, refresh: bool = False, categorical: bool = False,
 ) -> Path:
-    """Fetch one WMS layer for the AOI at the given pixel width.
+    """Fetch one WMS layer at the given pixel width.
 
     ⚠️ WMS 1.3.0 with `CRS=EPSG:4326` takes BBOX as `miny,minx,maxy,maxx` — latitude first,
     the same axis-order trap as the WFS calls in `ign.py`.
+
+    ⚠️ **`categorical=True` forces PNG, and that is a correctness requirement, not a quality
+    preference.** A rendered thematic layer encodes its classes *as colours*. JPEG is lossy and
+    interpolates between neighbouring colours, so a boundary between two classes acquires a
+    gradient of invented intermediate colours that belong to no class at all. Reading classes
+    back out then needs a tolerance, which silently mis-assigns edge pixels. This is the same
+    rule as using nearest-neighbour resampling for class rasters, applied to compression.
     """
     if out.exists() and not refresh:
         return out
@@ -65,7 +83,11 @@ def fetch_wms(
     r.raise_for_status()
     img = Image.open(io.BytesIO(r.content)).convert("RGB")
     out.parent.mkdir(parents=True, exist_ok=True)
-    img.save(out, "JPEG", quality=82, optimize=True, progressive=True)
+    if categorical:
+        # Quantise to the palette actually present, then store losslessly.
+        img.quantize(colors=16, method=Image.MEDIANCUT).save(out, "PNG", optimize=True)
+    else:
+        img.save(out, "JPEG", quality=82, optimize=True, progressive=True)
     return out
 
 

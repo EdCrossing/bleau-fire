@@ -52,6 +52,7 @@ hr { border:0; border-top:1px solid var(--line); margin:0; }
 .mapbox.dragging { cursor:grabbing; }
 .world { position:absolute; inset:0; transform-origin:0 0; will-change:transform; }
 .world img { position:absolute; inset:0; width:100%; height:100%; display:block; }
+.world img.ctx { inset:auto; opacity:.55; }
 #cv { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 
 .ctrls { position:absolute; top:0; left:0; bottom:0; width:246px; overflow-y:auto;
@@ -201,6 +202,7 @@ footer p { font-size:.78rem; color:var(--dim2); line-height:1.7; }
           <input class="slider" id="opacity" type="range" min="0" max="100" value="70"
                  aria-label="Overlay opacity"></div>
         <div class="grp"><span class="eyebrow">Problems</span><div id="ptopts"></div></div>
+        <div class="grp"><span class="eyebrow">Surrounds</span><div id="ctxopts"></div></div>
         <div class="grp" id="legwrap"><span class="eyebrow">Legend</span>
           <div class="legend" id="legend"></div></div>
       </div>
@@ -528,7 +530,11 @@ const LEGENDS = {
   footprint: [["#B0180A","derived fire perimeter"]],
   dnbr: [["#FEE08B","0.1"],["#FC8D59","0.4"],["#D73027","0.7"],["#7F0000","0.9+"]],
   fuel: DATA.fuel_labels.map((l,i)=>[DATA.fuel_colours[i],l]),
-  anciennes: [["#3F7A4B","continuously wooded since ~1850"]]
+  // IGN BD Forêts Anciennes: État-Major (~1850) crossed with BD Forêt v2. Colour meanings
+  // verified against our own current-forest and farmland masks, not guessed from the render.
+  anciennes: [["#458D4F","ancient — wooded since ~1850"],
+              ["#74F468","recent — grew since 1850"],
+              ["#B56BAE","disappeared — cleared since 1850"]]
 };
 const B = DATA.bounds, W = B.east - B.west, H = B.north - B.south;
 const FIRE = {lon:2.53, lat:48.38};
@@ -537,7 +543,7 @@ const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 const tip=document.getElementById('tip'), coord=document.getElementById('coord');
 const scaleEl=document.getElementById('scale'), legend=document.getElementById('legend');
 let tx=0, ty=0, k=1, showPts=true, onlyBurned=false, timeIdx=-1, hi=null;
-const MAXK = 40;
+const MAXK = 40, MINK = 0.22;
 
 const imgs={};
 function addImg(key,z){ if(!LAYERS[key])return;
@@ -573,6 +579,17 @@ function buildControls(){
     const el=mkOpt(`${label}<small>${sub}</small>`, overOn.has(key), (c,l)=>{
       c?overOn.add(key):overOn.delete(key); l.classList.toggle('on',c); apply(); });
     oc.appendChild(el);
+  });
+  const cc=document.getElementById('ctxopts');
+  [['ctx_map','Map','IGN Plan v2'],['ctx_ortho','Aerial','IGN orthophotography'],
+   ['none','Off','']].forEach(([key,label,sub])=>{
+    if(key!=='none' && !LAYERS[key]) return;
+    const f=(c)=>{ if(!c)return; ctxOn=key;
+      cc.querySelectorAll('.opt').forEach(o=>o.classList.remove('on'));
+      f.el.classList.add('on'); apply(); };
+    f.radio=true;
+    const el=mkOpt(`${label}${sub?`<small>${sub}</small>`:''}`, key===ctxOn, f);
+    el.querySelector('input').name='ctx'; f.el=el; cc.appendChild(el);
   });
   const pc=document.getElementById('ptopts');
   const ptEl=mkOpt(`Show problems<small>${DATA.points.length.toLocaleString()} sampled</small>`,
@@ -614,14 +631,17 @@ function apply(){
            im.style.opacity=document.getElementById('opacity').value/100; }
   });
   seriesImg.style.display=timeIdx>=0?'block':'none';
+  Object.entries(ctxImgs).forEach(([key,im])=>{
+    im.style.display = key===ctxOn ? 'block' : 'none'; });
   buildLegend(); draw();
 }
 
 /* ---- transform. Panning is allowed at every zoom level: the old clamp pinned the
    translation to zero at k=1, which made the map feel broken until you zoomed. ---- */
 function clamp(){
-  const w=box.clientWidth, h=box.clientHeight, pad=Math.min(w,h)*0.35;
-  k=Math.max(0.6,Math.min(MAXK,k));
+  const w=box.clientWidth, h=box.clientHeight;
+  const pad=Math.min(w,h)*(k<1?2.2:0.35);
+  k=Math.max(MINK,Math.min(MAXK,k));
   tx=Math.min(pad,Math.max(w-w*k-pad,tx));
   ty=Math.min(pad,Math.max(h-h*k-pad,ty));
 }
@@ -632,7 +652,7 @@ function toScreen(lon,lat){ const w=box.clientWidth,h=box.clientHeight;
 function toLonLat(px,py){ const w=box.clientWidth,h=box.clientHeight;
   return [B.west+((px-tx)/(w*k))*W, B.north-((py-ty)/(h*k))*H]; }
 function flyTo(lon,lat,z){
-  const w=box.clientWidth,h=box.clientHeight; k=Math.max(0.6,Math.min(MAXK,z));
+  const w=box.clientWidth,h=box.clientHeight; k=Math.max(MINK,Math.min(MAXK,z));
   tx=w/2-((lon-B.west)/W)*w*k; ty=h/2-((B.north-lat)/H)*h*k; apply_tf();
 }
 
@@ -713,11 +733,11 @@ box.addEventListener('pointerup',e=>{ dragging=false; box.classList.remove('drag
 box.addEventListener('pointerleave',()=>{tip.style.opacity=0;coord.textContent='—';});
 box.addEventListener('wheel',e=>{ e.preventDefault();
   const r=box.getBoundingClientRect(), px=e.clientX-r.left, py=e.clientY-r.top;
-  const f=Math.exp(-e.deltaY*0.0018), nk=Math.max(0.6,Math.min(MAXK,k*f));
+  const f=Math.exp(-e.deltaY*0.0018), nk=Math.max(MINK,Math.min(MAXK,k*f));
   tx=px-(px-tx)*(nk/k); ty=py-(py-ty)*(nk/k); k=nk; apply_tf(); },{passive:false});
 
 function zoomBy(f){ const w=box.clientWidth/2,h=box.clientHeight/2;
-  const nk=Math.max(0.6,Math.min(MAXK,k*f));
+  const nk=Math.max(MINK,Math.min(MAXK,k*f));
   tx=w-(w-tx)*(nk/k); ty=h-(h-ty)*(nk/k); k=nk; apply_tf(); }
 document.getElementById('zin').onclick=()=>zoomBy(1.6);
 document.getElementById('zout').onclick=()=>zoomBy(1/1.6);

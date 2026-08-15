@@ -38,7 +38,17 @@ COLLECTION = "sentinel-2-l2a"
 # Earth Search asset keys. Native resolutions differ: the first four are 10 m, swir22 is 20 m.
 #   red/green/blue -> quicklooks, and looking at your data is not optional
 #   nir  (B08, 10 m) and swir22 (B12, 20 m) -> NBR
-BANDS: tuple[str, ...] = ("blue", "green", "red", "nir", "swir22")
+# B11 (swir16), B8A (nir08) and the red edge (B06, B07) were added so that soil-robust burn
+# indices can be computed alongside NBR. MIRBI needs both SWIR bands; BAIS2 needs the red edge
+# and the narrow NIR. Without them the only available burn signal is the NIR/SWIR2 contrast,
+# which is exactly the contrast that bare sand corrupts — see FINDINGS F5.
+BANDS: tuple[str, ...] = (
+    "blue", "green", "red", "nir", "swir22",
+    "swir16",    # B11 20 m — MIRBI, NBR2
+    "nir08",     # B8A 20 m — BAIS2 (narrow NIR, less affected by water vapour than B08)
+    "rededge2",  # B06 20 m — BAIS2
+    "rededge3",  # B07 20 m — BAIS2
+)
 MASK_BAND = "scl"
 
 # SCL classes discarded per pixel. Same set as eo-agent, for comparability.
