@@ -29,16 +29,19 @@ SERIES = OUT / "series"
 #   compact — a published Artifact, which must stay under 16 MB *after* base64 inflates
 #             everything by a third. Layers are re-encoded smaller and the series is coarser.
 #
-# Frames are sized by how much they actually show: a pass that saw 3% of the area is almost
-# entirely flat hatched nodata, so spending resolution on it buys nothing.
+# Frames are sized by COVERAGE — how much of the area the satellite actually observed — not by
+# how much survived cloud masking. Those are different things and conflating them was a bug: a
+# pass at 79% cloud with 0% nodata is a complete, real picture of cloud and deserves full
+# resolution, while a 98%-nodata pass is flat hatching and gains nothing from it. 21 frames were
+# needlessly degraded before this distinction was drawn.
 FULL = "--full" in sys.argv
 PROFILE = "full" if FULL else "compact"
-SEEN_MIN = 50.0
+SEEN_MIN = 50.0   # percent of the AOI actually observed (100 - nodata)
 if FULL:
     SERIES_GOOD, SERIES_EMPTY = (1500, 76), (760, 52)
     LAYER_MAX = {}                      # keep every layer as exported
 else:
-    SERIES_GOOD, SERIES_EMPTY = (1000, 64), (600, 45)
+    SERIES_GOOD, SERIES_EMPTY = (880, 58), (520, 42)
     LAYER_MAX = {"rgb_pre": 2100, "rgb_post": 2100, "ortho_now": 1800,
                  "ortho1950": 1800, "etatmajor": 1900, "anciennes": 1700}
 SHRUNK = WEB / "_shrunk"
@@ -117,7 +120,8 @@ for fm in frames_meta:
     src = SERIES / fm["file"]
     if not src.exists():
         continue
-    seen = fm.get("valid")
+    nod = fm.get("nodata")
+    seen = None if nod is None else 100.0 - nod
     w, q = SERIES_GOOD if (seen is None or seen >= SEEN_MIN) else SERIES_EMPTY
     small = SERIES / "web" / PROFILE / f"{w}_{q}_{fm['file']}"
     small.parent.mkdir(parents=True, exist_ok=True)
@@ -127,7 +131,9 @@ for fm in frames_meta:
         im.save(small, "JPEG", quality=q, optimize=True, progressive=True)
     series.append({
         "date": fm["date"], "cloud": fm["cloud"],
-        "valid": fm.get("valid"), "img": uri(small),
+        "seen": None if seen is None else round(seen, 1),   # coverage
+        "clear": fm.get("valid"),                            # usable after cloud masking
+        "img": uri(small),
     })
 
 # ---------------------------------------------------------------------------
@@ -286,7 +292,7 @@ HTML = (
 
 out = WEB / "index.html"
 out.write_text(HTML)
-nice = sum(1 for f in frames_meta if (f.get("valid") or 0) >= SEEN_MIN)
+nice = sum(1 for f in frames_meta if (100.0 - (f.get("nodata") or 0)) >= SEEN_MIN)
 print(f"wrote {out}  {out.stat().st_size / 1e6:.2f} MB  [profile: {PROFILE}]")
 print(f"  series: {nice} passes at {SERIES_GOOD[0]}px, "
       f"{len(series) - nice} near-empty at {SERIES_EMPTY[0]}px")
