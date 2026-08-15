@@ -99,10 +99,29 @@ hr { border:0; border-top:1px solid var(--line); margin:0; }
   color:var(--ink); cursor:pointer; }
 .scrub button:hover { border-color:var(--cy); color:var(--cy); }
 .scrub input[type=range] { flex:1; accent-color:var(--cy); }
-.flab { font:.74rem/1.3 var(--mono); color:var(--dim); white-space:nowrap; min-width:250px;
+.flab { font:.74rem/1.3 var(--mono); color:var(--dim); white-space:nowrap; min-width:230px;
   text-align:right; }
 .flab b { color:var(--ink); font-weight:500; }
 .flab .warn { color:var(--s2); }
+.skipbox { display:flex; gap:7px; align-items:center; font-size:.76rem; color:var(--dim);
+  cursor:pointer; white-space:nowrap; }
+.skipbox input { accent-color:var(--cy); margin:0; }
+.skipbox:hover { color:var(--ink); }
+.hintline { font-size:.78rem; color:var(--dim2); padding:9px 2px 0; }
+.hintline b { color:var(--dim); font-weight:400; }
+kbd { font-family:var(--mono); font-size:.72rem; border:1px solid var(--line2);
+  padding:1px 5px; color:var(--dim); }
+.eq { font:.86rem/1.9 var(--mono); color:var(--ink); background:var(--raise);
+  border-left:2px solid var(--cy-dim); padding:14px 18px; overflow-x:auto; }
+.eq i { color:var(--dim2); font-style:normal; }
+.chain { display:flex; flex-wrap:wrap; gap:9px; align-items:center; font:.76rem/1 var(--mono);
+  color:var(--dim); }
+.chain b { color:var(--ink); font-weight:500; }
+.chain .ar { color:var(--cy); }
+.deflist { display:grid; grid-template-columns:auto 1fr; gap:9px 18px; font-size:.86rem;
+  align-items:baseline; }
+.deflist dt { font-family:var(--mono); color:var(--ink); font-size:.82rem; }
+.deflist dd { margin:0; color:var(--dim); }
 
 /* ---------- tables ---------- */
 .tbl { width:100%; border-collapse:collapse; font-size:.86rem; }
@@ -196,30 +215,20 @@ footer p { font-size:.78rem; color:var(--dim2); line-height:1.7; }
       <div class="tip" id="tip"></div>
     </div>
     <div class="scrub">
-      <button type="button" id="play" aria-label="Play the pass series">▶</button>
+      <button type="button" id="prev" aria-label="Previous pass" title="Previous pass (←)">◀</button>
+      <button type="button" id="next" aria-label="Next pass" title="Next pass (→)">▶</button>
       <input id="time" type="range" min="0" max="0" value="0" aria-label="Satellite pass">
+      <label class="skipbox"><input type="checkbox" id="skipempty">
+        <span>Hide passes that saw &lt;50% of the area</span></label>
       <span class="flab" id="framelab">pre/post pair</span>
     </div>
+    <p class="hintline">Use <kbd>←</kbd> <kbd>→</kbd> to step through passes. Hatched blue-grey
+    is <b>nodata</b> — ground outside the satellite's swath on that orbit, never observed.
+    <span id="skipstat"></span></p>
   </div>
 </div>
 
 <div class="col">
-<section>
-  <span class="eyebrow">Reading the passes</span>
-  <h2>Why half the frames are black</h2>
-  <div class="stack">
-    <p class="note-t">The slider steps through <b>every</b> Sentinel-2 pass, not a curated set.
-    Many frames are mostly black with one lit corner. That is not night — Sentinel-2 only images
-    in daylight — and it is not corruption. It is <b>nodata</b>: the satellite's swath clipped
-    the corner of the area and the rest of the frame was never observed.</p>
-    <p class="note-t">This matters beyond the animation. Scene cloud cover is computed over
-    <em>valid pixels only</em>, so a granule containing almost nothing advertises almost no
-    cloud — and ranking scenes by cloud actively selects the empty ones. The scene one day before
-    ignition, at 0.6% cloud, is <b>99.4% nodata</b> here. The label under the slider shows what
-    each pass could actually see.</p>
-  </div>
-</section>
-
 <section>
   <span class="eyebrow">The answer</span>
   <h2>Circuits inside the scar</h2>
@@ -244,12 +253,52 @@ footer p { font-size:.78rem; color:var(--dim2); line-height:1.7; }
     ground before and after, sampled from our own imagery at identical brightness — no per-image
     stretch, or the darkening would be hidden.</p>
     <div class="fuels" id="fuels">__FUEL_CARDS__</div>
-    <p class="note-t"><b>This is the opposite of what I predicted.</b> The textbook argument is
-    that dNBR under-reads sparse fuel — less to lose — and that RdNBR compresses the gap. Heath
-    reads <em>highest</em>, closed conifer lowest, and RdNBR widens the spread. Calluna heath here
-    sits on open sand and burns to complete consumption, exposing bright substrate that is highly
-    reflective in shortwave infrared. Over heath the index substantially measures <em>the sand
-    revealed</em>, not the energy released.</p>
+
+    <h3 style="margin-top:14px">How severity is measured</h3>
+    <div class="eq">NBR&nbsp;&nbsp;= (NIR − SWIR2) / (NIR + SWIR2)<i> &nbsp; B08, B12</i><br>
+      dNBR&nbsp;= NBR<sub>pre</sub> − NBR<sub>post</sub><br>
+      RdNBR = dNBR / √|NBR<sub>pre</sub>|</div>
+    <p class="note-t">Healthy foliage reflects strongly in the near infrared and absorbs in the
+    shortwave infrared, so NBR is high. Fire removes foliage and exposes char and soil, which
+    reverses both, so NBR falls. Differencing isolates that change. RdNBR divides by pre-fire
+    condition, which is meant to correct for how much vegetation there was to lose.</p>
+
+    <h3>The expected result, and the measured one</h3>
+    <p class="note-t">dNBR is an absolute difference, so the standard expectation is that it
+    <em>under</em>-reads sparse fuel — less foliage to lose — and that RdNBR narrows the gap
+    between fuel types. Measured here, both fail: heath gives the highest dNBR (0.486) and closed
+    conifer the lowest (0.319), and RdNBR widens the spread rather than narrowing it
+    (0.917 against 0.448).</p>
+
+    <h3>Why: the index is partly measuring substrate</h3>
+    <p class="note-t">Calluna heath at Fontainebleau grows directly on quartz sand. After
+    complete combustion the pixel is dominated by bare sand, which has <b>high</b> SWIR2
+    reflectance. Substituting into the equation, a large ρ<sub>SWIR2</sub> with modest
+    ρ<sub>NIR</sub> drives NBR<sub>post</sub> strongly negative, so dNBR is large regardless of how
+    much energy the fire released. Burnt closed pine at 10 m still contains standing charred
+    trunks and partly green crowns, so its pixel spectrum changes less. RdNBR amplifies the effect
+    because pre-fire heath has a modest NBR<sub>pre</sub>, shrinking the denominator.</p>
+
+    <h3>What would separate substrate from severity</h3>
+    <p class="note-t">Three approaches, in increasing order of cost, none yet run:</p>
+    <ol class="note-t" style="padding-left:20px;display:flex;flex-direction:column;gap:9px">
+      <li><b>Soil-robust burn indices.</b> MIRBI was designed to suppress soil background:
+        <span class="mono">MIRBI = 10·ρ<sub>SWIR2</sub> − 9.8·ρ<sub>SWIR1</sub> + 2</span>.
+        BAIS2 uses the red edge instead of relying on the NIR/SWIR contrast alone. Both need
+        bands this pipeline does not currently fetch — <span class="mono">B11, B8A, B06,
+        B07</span> — so the first step is widening the band list and re-running.</li>
+      <li><b>Spectral mixture analysis.</b> Decompose each pixel into fractions of char, green
+        vegetation, dry vegetation and soil against reference spectra. Severity then becomes the
+        <em>char fraction</em>, which is substrate-independent by construction rather than by
+        correction.</li>
+      <li><b>Validation against an independent grading.</b> Copernicus EMS graded this exact fire
+        under EMSR894 by expert interpretation. If that grading also ranks heath highest, the
+        effect is real fire behaviour; if it does not, it is the index. This is the cheapest
+        decisive test and it is the reason the EMS vectors matter.</li>
+    </ol>
+    <p class="note-t">Until one of those is run, the fuel ranking above should be read as a
+    property of dNBR over this substrate, not as a measurement of fire intensity. Within a single
+    fuel type the ranking remains usable.</p>
   </div>
 </section>
 
@@ -257,9 +306,41 @@ footer p { font-size:.78rem; color:var(--dim2); line-height:1.7; }
   <span class="eyebrow">Fire weather</span>
   <h2>The two most extreme days since 1940</h2>
   <div class="stack">
-    <p class="note-t">Canadian Fire Weather Index from ERA5 hourly data — <b>759,288 hours,
-    31,637 daily values</b>, spun up so the long-memory drought codes carry real state rather
-    than startup defaults. The fire ignited on 12 July and made its run on the 13th.</p>
+    <h3>What the Fire Weather Index is</h3>
+    <p class="note-t">The Canadian Forest Fire Weather Index is the system Copernicus EFFIS runs
+    for Europe. It is not a physical fire model — it is empirical moisture bookkeeping, on the
+    principle that how readily fuel burns is mostly determined by how much water it currently
+    holds, and that different fuel layers dry out at very different rates.</p>
+    <p class="note-t">It takes four measurements, at noon: air temperature, relative humidity,
+    10 m wind speed, and rainfall over the preceding 24 hours. From those it maintains three
+    moisture codes, each carried forward from yesterday's value:</p>
+    <dl class="deflist">
+      <dt>FFMC</dt><dd>Fine Fuel Moisture Code — litter and needles in the top 1–2 cm.
+        Responds within <b>hours</b>. Controls whether a fire starts at all.</dd>
+      <dt>DMC</dt><dd>Duff Moisture Code — loosely compacted organic matter 5–10 cm down.
+        Time lag about <b>15 days</b>.</dd>
+      <dt>DC</dt><dd>Drought Code — deep, compact organic layers 10–20 cm down. Time lag about
+        <b>52 days</b>. This is the seasonal drought signal.</dd>
+    </dl>
+    <p class="note-t">Those combine into two intermediate indices and then the headline number:</p>
+    <div class="chain"><b>FFMC</b> + wind <span class="ar">→</span> <b>ISI</b>
+      <i style="color:var(--dim2);font-style:normal">rate of spread</i>
+      <span class="ar">·</span> <b>DMC</b> + <b>DC</b> <span class="ar">→</span> <b>BUI</b>
+      <i style="color:var(--dim2);font-style:normal">fuel available</i>
+      <span class="ar">·</span> <b>ISI</b> + <b>BUI</b> <span class="ar">→</span> <b>FWI</b></div>
+    <div class="eq">ISI = 0.208 · e<sup>0.05039·W</sup> · 91.9 · e<sup>−0.1386·m</sup> ·
+      (1 + m<sup>5.31</sup>/4.93×10<sup>7</sup>)<br>
+      <i>where W is wind in km/h and m is fine fuel moisture content, derived from FFMC</i></div>
+
+    <h3>Why the calculation starts in January, not in July</h3>
+    <p class="note-t">Because DC has a 52-day time lag, its value on any given day is an
+    accumulation of roughly the previous two months of heat and rainfall. Start the calculation on
+    the day of the fire and you have no history to accumulate, so you must use the standard
+    start-of-season value of <b>DC = 15</b>, meaning saturated ground after snowmelt. The actual
+    value on 12 July 2026 was <b>486</b>. Running from January rather than July is therefore the
+    difference between a drought term of 15 and one of 486 — the whole seasonal signal. The
+    series below runs continuously from 1940: <b>759,288 hourly records, 31,637 daily index
+    values</b>.</p>
     <figure>
       <div class="hist" id="hist">__HIST_BARS__</div>
       <div class="histx"><span>FWI 0</span><span>__HIST_MID__</span><span>__HIST_MAX__</span></div>
@@ -341,23 +422,42 @@ footer p { font-size:.78rem; color:var(--dim2); line-height:1.7; }
           <text x="196" y="40" font-size="9" fill="#78828C" font-family="ui-monospace,monospace">max 3,899 m</text>
           <text x="196" y="258" font-size="9" fill="#78828C" font-family="ui-monospace,monospace">p25 310 m</text>
         </svg>
-        <figcaption>Only <b style="color:var(--ink)">35%</b> of confirmed-smoke pixels sit above
-        the boundary layer. The bulk was inside it — which <em>refutes</em> the tidy explanation
-        for why surface air quality barely moved.</figcaption>
+        <figcaption>Median retrieved smoke altitude is 825 m against a boundary layer top at
+        1,865 m, so <b style="color:var(--ink)">65%</b> of confirmed-smoke pixels sit inside the
+        mixed layer. The retrieval is documented as biased low over thin plumes, so 35% above is
+        a lower bound.</figcaption>
       </figure>
     </div>
 
-    <p class="note-t">The burn scar <em>could not</em> confirm the wind: growth after 13 July ran
-    81° away from it. But suppression targets the downwind head of a fire by definition —
-    aircraft attack exactly where the wind pushes it. Nobody was water-bombing the smoke, so the
-    plume is the honest witness, and the disagreement between them is the argument that the
-    scar-geometry test was measuring firefighting.</p>
-    <p class="note-t">Carbon monoxide told the same story from a third product: the column more
-    than <b>doubled</b> the regional background 2 km from the fire. And the height retrieval found
-    <b>313 confirmed-smoke pixels on 13 July and exactly zero on 9 and 14 July</b> — a clean
-    control. So why did surface air quality barely move? The boundary layer reached
-    <b>2,320 m</b> on a 35 °C day against 1,535 m before the fire. Smoke stirred through two
-    kilometres of atmosphere is thin by the time it reaches the ground. Dilution, not decoupling.</p>
+    <h3>Two measurements of spread direction disagree</h3>
+    <p class="note-t">Growth of the burn scar between 13 and 20 July displaced its centroid
+    1,127 m toward 292°. The plume lies at 264°. Wind over the same window blew toward 211°. So
+    the scar-based estimate is 81° from the wind and the plume-based estimate is within 25°.</p>
+    <p class="note-t">The likely cause of the discrepancy is that the two measurements are not
+    of the same thing. Suppression is concentrated at the fire head, which is by definition the
+    downwind edge — 187 water drops were made by four Canadair, two Dash and three helicopter
+    sorties. Downwind growth is therefore the growth most actively prevented, so scar expansion
+    measures fire behaviour <em>net of</em> suppression. Plume transport is unaffected by
+    suppression. This is an explanation, not a demonstration: separating the two properly needs
+    the EMS progression isochrones rather than two satellite passes and a centroid.</p>
+
+    <h3>Why surface air quality barely moved</h3>
+    <p class="note-t">Three independent products agree that the fire was detectable from orbit.
+    CO total column reached <b>0.062 mol/m²</b> against a regional background of
+    <b>0.029 mol/m²</b>, 2 km from the fire. The aerosol layer-height product returned <b>313
+    pixels</b> meeting both the quality flag and the smoke threshold on 13 July, and <b>zero</b>
+    on 9 and 14 July — the two control days.</p>
+    <p class="note-t">Yet CAMS surface PM2.5 rose only about <b>1 µg/m³</b>, roughly uniformly
+    across a 60 km ring. Surface concentration for a given emission scales inversely with the
+    depth of the layer the smoke is mixed through:</p>
+    <div class="eq">C<sub>surface</sub> ∝ E / (BLH × A)<i> &nbsp; emission, boundary layer
+      height, area</i></div>
+    <p class="note-t">Boundary layer height on 13 July reached <b>2,320 m</b> against
+    <b>1,535 m</b> on the pre-fire baseline — 51% deeper, so about a third lower surface
+    concentration for identical emissions. That is a contributing factor, not a complete
+    explanation: it does not by itself account for a signal this weak, and the remaining
+    candidates are that CAMS did not assimilate this fire's emissions, and that an 11 km model
+    grid cell heavily dilutes a plume of this width.</p>
   </div>
 </section>
 
@@ -660,29 +760,60 @@ document.querySelectorAll('#circuitbody tr[data-area]').forEach(tr=>{
   });
 });
 
-/* ---- pass series ---- */
+/* ---- pass series: stepped, not animated ----
+   `view` is the list of series indices currently reachable. Filtering rebuilds it rather than
+   skipping during playback, so the slider length always matches what is actually steppable. */
 const timeEl=document.getElementById('time'), lab=document.getElementById('framelab');
-if(SERIES.length){
-  timeEl.max=SERIES.length-1;
-  timeEl.addEventListener('input',()=>setFrame(+timeEl.value));
-  let playing=null;
-  document.getElementById('play').onclick=e=>{
-    if(playing){clearInterval(playing);playing=null;e.target.textContent='▶';return;}
-    e.target.textContent='❚❚';
-    playing=setInterval(()=>{const n=(+timeEl.value+1)%SERIES.length;
-      timeEl.value=n; setFrame(n);},430);
-  };
-  // NB: deliberately NOT calling setFrame(0) here. Doing so hid the base layer behind an
-  // often-near-empty first frame, so the page opened on what looked like a broken white map.
-} else { lab.textContent='no series'; }
-function setFrame(i){ const f=SERIES[i]; if(!f)return;
-  timeIdx=i; seriesImg.src=f.img;
-  const v=f.valid==null?null:f.valid;
-  const bad = v!=null && v<50;
+const MIN_SEEN = 50;
+let view = SERIES.map((_,i)=>i), pos = 0;
+
+function rebuildView(skipEmpty){
+  const cur = view[pos];
+  view = SERIES.map((f,i)=>i).filter(i=>{
+    if(!skipEmpty) return true;
+    const v = SERIES[i].valid;
+    return v==null || v>=MIN_SEEN;
+  });
+  if(!view.length){ view = SERIES.map((_,i)=>i); }
+  // keep the nearest still-visible pass rather than jumping to the start
+  let best=0, bd=Infinity;
+  view.forEach((si,j)=>{ const d=Math.abs(si-cur); if(d<bd){bd=d;best=j;} });
+  pos = best;
+  timeEl.max = view.length-1; timeEl.value = pos;
+  const hidden = SERIES.length - view.length;
+  document.getElementById('skipstat').textContent =
+    hidden ? `${hidden} of ${SERIES.length} passes hidden.` : '';
+  if(timeIdx>=0) setFrame(pos);
+}
+function setFrame(p){
+  if(!view.length) return;
+  pos = Math.max(0, Math.min(view.length-1, p));
+  timeEl.value = pos;
+  const f = SERIES[view[pos]]; if(!f) return;
+  timeIdx = view[pos]; seriesImg.src = f.img;
+  const v = f.valid==null ? null : f.valid;
   lab.innerHTML=`<b>${f.date}</b> · ${f.cloud}% cloud · `+
-    (v==null?'—':`<span class="${bad?'warn':''}">${v.toFixed(0)}% of area seen</span>`);
+    (v==null?'—':`<span class="${v<MIN_SEEN?'warn':''}">${v.toFixed(0)}% seen</span>`);
   apply();
 }
+function step(d){ setFrame(pos+d); }
+
+if(SERIES.length){
+  timeEl.addEventListener('input',()=>setFrame(+timeEl.value));
+  document.getElementById('prev').onclick=()=>step(-1);
+  document.getElementById('next').onclick=()=>step(1);
+  document.getElementById('skipempty').addEventListener('change',
+    e=>rebuildView(e.target.checked));
+  // Arrow keys drive the series, but never while the user is typing in a control.
+  window.addEventListener('keydown',e=>{
+    if(e.target.matches('input[type=range],input[type=text],textarea')) return;
+    if(e.key==='ArrowRight'){ step(1); e.preventDefault(); }
+    else if(e.key==='ArrowLeft'){ step(-1); e.preventDefault(); }
+  });
+  rebuildView(false);
+  // NB: deliberately NOT calling setFrame() at init. Doing so hid the base layer behind an
+  // often-near-empty first frame, so the page opened on what looked like a broken white map.
+} else { lab.textContent='no series'; }
 
 buildControls();
 document.getElementById('opacity').addEventListener('input',apply);
