@@ -78,6 +78,8 @@ hr { border:0; border-top:1px solid var(--line); margin:0; }
 .legend .cap2 { font:500 .64rem/1 var(--mono); letter-spacing:.14em; text-transform:uppercase;
   color:var(--dim2); margin:9px 0 3px; }
 
+.attrib { position:absolute; left:10px; bottom:10px; font:.62rem/1.3 var(--mono);
+  color:var(--dim2); background:rgba(8,9,10,.72); padding:4px 8px; max-width:52%; }
 .hud { position:absolute; right:10px; bottom:10px; display:flex; gap:10px; align-items:center;
   background:rgba(8,9,10,.82); padding:6px 11px; border:1px solid var(--line);
   font:.68rem/1.4 var(--mono); color:var(--dim); backdrop-filter:blur(8px); }
@@ -215,6 +217,7 @@ footer p { font-size:.78rem; color:var(--dim2); line-height:1.7; }
         <button type="button" id="zall" aria-label="Whole massif" title="Whole massif">⤢</button>
       </div>
       <div class="hud"><span id="coord">—</span><span id="scale"></span></div>
+      <div class="attrib" id="attrib"></div>
       <div class="tip" id="tip"></div>
     </div>
     <div class="scrub">
@@ -544,7 +547,7 @@ const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
 const tip=document.getElementById('tip'), coord=document.getElementById('coord');
 const scaleEl=document.getElementById('scale'), legend=document.getElementById('legend');
 let tx=0, ty=0, k=1, showPts=true, onlyBurned=false, timeIdx=-1, hi=null;
-const MAXK = 40, MINK = 0.22;
+const MAXK = 160, MINK = 0.22;
 
 /* Layers are lazy. Assigning src to all twelve at load decodes several hundred MB of bitmap
    before anything is on screen, most of which is never looked at. src is assigned the first
@@ -571,13 +574,90 @@ seriesImg.style.display='none'; world.appendChild(seriesImg);
 const CTX = DATA.context_bounds;
 const ctxcv = document.getElementById('ctxcv'), cctx = ctxcv.getContext('2d');
 const ctxImgs = {};
-let ctxOn = 'ctx_map';
 if (CTX) {
   ['ctx_map','ctx_ortho'].forEach(key=>{
     if(!LAYERS[key]) return;
     const im = new Image(); im.onload = () => draw(); im.src = LAYERS[key];
     ctxImgs[key] = im;
   });
+}
+
+/* ---------- XYZ tile basemap ----------
+   Hand-rolled rather than pulling in Leaflet or MapLibre: the projection helpers, canvas and
+   transform already exist here, so a tile layer is about sixty lines of Web Mercator maths and
+   avoids a library dependency the Artifact's CSP would block anyway.
+
+   Google is deliberately absent — the Maps Platform terms do not permit fetching their tiles
+   outside their own JS API, which needs a billing-enabled key. All four sources below are
+   keyless and permit this use with attribution.
+
+   ⚠️ Tiles are Web Mercator squares; this map's transform is linear in latitude. Across the
+   0.25 degrees of latitude covered here the Mercator y-scale varies by under 0.4%, which is
+   sub-pixel, so each tile is simply placed by its own corner coordinates. That approximation
+   would NOT hold over a continent. */
+const TILES = {
+  ign_ortho: {label:'Aerial', sub:'IGN orthophotography, France',
+    url:z=>`https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}&FORMAT=image/jpeg`,
+    max:19, attr:'© IGN'},
+  ign_plan: {label:'Map', sub:'Plan IGN v2, France',
+    url:z=>`https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM&TILEMATRIX={z}&TILECOL={x}&TILEROW={y}&FORMAT=image/png`,
+    max:19, attr:'© IGN'},
+  esri: {label:'Satellite', sub:'Esri World Imagery, global',
+    url:()=>'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    max:18, attr:'© Esri, Maxar, Earthstar Geographics'},
+  osm: {label:'Street map', sub:'OpenStreetMap, global',
+    url:()=>'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    max:19, attr:'© OpenStreetMap contributors'},
+};
+let ctxOn = 'ign_ortho';
+const tileCache = new Map();
+let tilesInFlight = 0;
+const MAX_INFLIGHT = 10;
+
+function lon2tile(lon,z){ return (lon+180)/360*Math.pow(2,z); }
+function lat2tile(lat,z){ const r=lat*Math.PI/180;
+  return (1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*Math.pow(2,z); }
+function tile2lon(x,z){ return x/Math.pow(2,z)*360-180; }
+function tile2lat(y,z){ const n=Math.PI-2*Math.PI*y/Math.pow(2,z);
+  return 180/Math.PI*Math.atan(0.5*(Math.exp(n)-Math.exp(-n))); }
+
+function getTile(src,z,x,y){
+  const key=`${src}/${z}/${x}/${y}`;
+  let im=tileCache.get(key);
+  if(im) return im.ok ? im : null;
+  if(tilesInFlight>=MAX_INFLIGHT) return null;
+  im=new Image(); im.crossOrigin='anonymous'; im.ok=false;
+  tileCache.set(key,im); tilesInFlight++;
+  im.onload=()=>{ im.ok=true; tilesInFlight--; draw(); };
+  im.onerror=()=>{ tilesInFlight--; };   // CSP-blocked or offline: static context shows through
+  im.src=TILES[src].url(z).replace('{z}',z).replace('{x}',x).replace('{y}',y);
+  return null;
+}
+
+function drawTiles(w,h){
+  const src=TILES[ctxOn]; if(!src) return false;
+  const degPerPx = W/(box.clientWidth*k);
+  let z = Math.round(Math.log2(360/(256*degPerPx)));
+  z = Math.max(3, Math.min(src.max, z));
+  const [lonW,latN]=toLonLat(0,0), [lonE,latS]=toLonLat(w,h);
+  const n=Math.pow(2,z);
+  const x0=Math.max(0,Math.floor(lon2tile(lonW,z))), x1=Math.min(n-1,Math.floor(lon2tile(lonE,z)));
+  const y0=Math.max(0,Math.floor(lat2tile(latN,z))), y1=Math.min(n-1,Math.floor(lat2tile(latS,z)));
+  if((x1-x0+1)*(y1-y0+1) > 400) return false;       // sanity cap
+  let drew=0;
+  for(let x=x0;x<=x1;x++) for(let y=y0;y<=y1;y++){
+    const im=getTile(ctxOn,z,x,y); if(!im) continue;
+    const [sx0,sy0]=toScreen(tile2lon(x,z), tile2lat(y,z));
+    const [sx1,sy1]=toScreen(tile2lon(x+1,z), tile2lat(y+1,z));
+    cctx.drawImage(im, sx0, sy0, Math.ceil(sx1-sx0)+1, Math.ceil(sy1-sy0)+1);
+    drew++;
+  }
+  if(tileCache.size>900){ // keep memory bounded on long sessions
+    const keep=[...tileCache.keys()].slice(-600);
+    const next=new Map(keep.map(kk=>[kk,tileCache.get(kk)])); tileCache.clear();
+    next.forEach((v,kk)=>tileCache.set(kk,v));
+  }
+  return drew>0;
 }
 
 let base='rgb_post';
@@ -608,9 +688,8 @@ function buildControls(){
     oc.appendChild(el);
   });
   const cc=document.getElementById('ctxopts');
-  [['ctx_map','Map','IGN Plan v2'],['ctx_ortho','Aerial','IGN orthophotography'],
+  [...Object.entries(TILES).map(([k,v])=>[k,v.label,v.sub]),
    ['none','Off','']].forEach(([key,label,sub])=>{
-    if(key!=='none' && !LAYERS[key]) return;
     const f=(c)=>{ if(!c)return; ctxOn=key;
       cc.querySelectorAll('.opt').forEach(o=>o.classList.remove('on'));
       f.el.classList.add('on'); apply(); };
@@ -659,6 +738,8 @@ function apply(){
     im.style.opacity = isBase ? 1 : document.getElementById('opacity').value/100;
   });
   seriesImg.style.display=timeIdx>=0?'block':'none';
+  const at=document.getElementById('attrib');
+  if(at) at.textContent = ctxOn!=='none' && TILES[ctxOn] ? TILES[ctxOn].attr : '';
   buildLegend(); draw();
 }
 
@@ -689,10 +770,15 @@ function draw(){
   if(ctxcv.width!==w*dpr||ctxcv.height!==h*dpr){ctxcv.width=w*dpr;ctxcv.height=h*dpr;}
   ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
   cctx.setTransform(dpr,0,0,dpr,0,0); cctx.clearRect(0,0,w,h);
-  const cim=ctxImgs[ctxOn];
-  if(cim && cim.complete && cim.naturalWidth && CTX){
-    const [x0,y0]=toScreen(CTX.west,CTX.north), [x1,y1]=toScreen(CTX.east,CTX.south);
-    cctx.globalAlpha=.55; cctx.drawImage(cim,x0,y0,x1-x0,y1-y0); cctx.globalAlpha=1;
+  if(ctxOn!=='none'){
+    // Static regional image underneath, so a CSP-blocked or slow tile layer still shows
+    // something rather than black.
+    const fb = ctxImgs[TILES[ctxOn] && TILES[ctxOn].label==='Map' ? 'ctx_map' : 'ctx_ortho'];
+    if(fb && fb.complete && fb.naturalWidth && CTX){
+      const [x0,y0]=toScreen(CTX.west,CTX.north), [x1,y1]=toScreen(CTX.east,CTX.south);
+      cctx.globalAlpha=.5; cctx.drawImage(fb,x0,y0,x1-x0,y1-y0); cctx.globalAlpha=1;
+    }
+    drawTiles(w,h);
   }
 
   const span=W/k; let step=STEPS[STEPS.length-1];
