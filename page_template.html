@@ -52,7 +52,7 @@ hr { border:0; border-top:1px solid var(--line); margin:0; }
 .mapbox.dragging { cursor:grabbing; }
 .world { position:absolute; inset:0; transform-origin:0 0; will-change:transform; }
 .world img { position:absolute; inset:0; width:100%; height:100%; display:block; }
-.world img.ctx { inset:auto; opacity:.55; }
+#ctxcv { position:absolute; inset:0; width:100%; height:100%; z-index:0; }
 #cv { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 
 .ctrls { position:absolute; top:0; left:0; bottom:0; width:246px; overflow-y:auto;
@@ -194,6 +194,7 @@ footer p { font-size:.78rem; color:var(--dim2); line-height:1.7; }
 <div class="wide">
   <div class="mapwrap">
     <div class="mapbox" id="mapbox">
+      <canvas id="ctxcv"></canvas>
       <div class="world" id="world"></div>
       <canvas id="cv"></canvas>
       <div class="ctrls" id="ctrls">
@@ -545,21 +546,47 @@ const scaleEl=document.getElementById('scale'), legend=document.getElementById('
 let tx=0, ty=0, k=1, showPts=true, onlyBurned=false, timeIdx=-1, hi=null;
 const MAXK = 40, MINK = 0.22;
 
+/* Layers are lazy. Assigning src to all twelve at load decodes several hundred MB of bitmap
+   before anything is on screen, most of which is never looked at. src is assigned the first
+   time a layer is actually shown, and kept afterwards. */
 const imgs={};
 function addImg(key,z){ if(!LAYERS[key])return;
-  const im=new Image(); im.src=LAYERS[key]; im.alt=''; im.style.zIndex=z;
-  im.style.display='none'; world.appendChild(im); imgs[key]=im; }
+  const im=new Image(); im.alt=''; im.style.zIndex=z; im.dataset.key=key;
+  im.style.display='none'; im.onload=()=>draw(); world.appendChild(im); imgs[key]=im; }
+function ensureSrc(im){ if(im && !im.getAttribute('src')) im.src = LAYERS[im.dataset.key]; }
 BASES.forEach(([q])=>addImg(q,1));
 OVERS.forEach(([q],i)=>addImg(q,5+i));
 const seriesImg=new Image(); seriesImg.alt=''; seriesImg.style.zIndex=2;
+seriesImg.onload=()=>draw();
 seriesImg.style.display='none'; world.appendChild(seriesImg);
+
+/* Regional context spans a wider bbox than the AOI, so pulling the zoom out shows where in
+   France this is instead of the AOI floating on black.
+
+   ⚠️ Drawn on its own canvas in SCREEN coordinates, not as a DOM image inside the transformed
+   world div. Placing it there needs an element sized ~640% x 640% of the container, and a child
+   that large under `will-change: transform` makes the compositor allocate a layer big enough to
+   fail — which presents as a blank map rather than a slow one. One drawImage per frame costs
+   nothing by comparison. */
+const CTX = DATA.context_bounds;
+const ctxcv = document.getElementById('ctxcv'), cctx = ctxcv.getContext('2d');
+const ctxImgs = {};
+let ctxOn = 'ctx_map';
+if (CTX) {
+  ['ctx_map','ctx_ortho'].forEach(key=>{
+    if(!LAYERS[key]) return;
+    const im = new Image(); im.onload = () => draw(); im.src = LAYERS[key];
+    ctxImgs[key] = im;
+  });
+}
 
 let base='rgb_post';
 const overOn=new Set(['footprint']);   // clean default: no messy dNBR-over-farmland on load
 
 function mkOpt(html,checked,onchange,dis){
   const l=document.createElement('label'); l.className='opt'+(checked?' on':'')+(dis?' dis':'');
-  l.innerHTML=`<input type="${onchange.radio?'radio':'checkbox'}"${onchange.radio?' name="base"':''}
+  const grp = onchange.group || 'base';
+  l.innerHTML=`<input type="${onchange.radio?'radio':'checkbox'}"${onchange.radio?` name="${grp}"`:''}
     ${checked?' checked':''}${dis?' disabled':''}><span>${html}</span>`;
   l.querySelector('input').addEventListener('change',e=>{onchange(e.target.checked,l);});
   return l;
@@ -587,9 +614,9 @@ function buildControls(){
     const f=(c)=>{ if(!c)return; ctxOn=key;
       cc.querySelectorAll('.opt').forEach(o=>o.classList.remove('on'));
       f.el.classList.add('on'); apply(); };
-    f.radio=true;
+    f.radio=true; f.group='ctx';
     const el=mkOpt(`${label}${sub?`<small>${sub}</small>`:''}`, key===ctxOn, f);
-    el.querySelector('input').name='ctx'; f.el=el; cc.appendChild(el);
+    f.el=el; cc.appendChild(el);
   });
   const pc=document.getElementById('ptopts');
   const ptEl=mkOpt(`Show problems<small>${DATA.points.length.toLocaleString()} sampled</small>`,
@@ -626,13 +653,12 @@ function buildLegend(){
 function apply(){
   Object.entries(imgs).forEach(([key,im])=>{
     const isBase=BASES.some(b=>b[0]===key);
-    if(isBase){ im.style.display=(key===base&&timeIdx<0)?'block':'none'; im.style.opacity=1; }
-    else { im.style.display=overOn.has(key)?'block':'none';
-           im.style.opacity=document.getElementById('opacity').value/100; }
+    const show = isBase ? (key===base&&timeIdx<0) : overOn.has(key);
+    if(show) ensureSrc(im);
+    im.style.display = show ? 'block' : 'none';
+    im.style.opacity = isBase ? 1 : document.getElementById('opacity').value/100;
   });
   seriesImg.style.display=timeIdx>=0?'block':'none';
-  Object.entries(ctxImgs).forEach(([key,im])=>{
-    im.style.display = key===ctxOn ? 'block' : 'none'; });
   buildLegend(); draw();
 }
 
@@ -660,7 +686,14 @@ const STEPS=[0.2,0.1,0.05,0.02,0.01,0.005,0.002,0.001,0.0005,0.0002];
 function draw(){
   const w=box.clientWidth,h=box.clientHeight,dpr=window.devicePixelRatio||1;
   if(cv.width!==w*dpr||cv.height!==h*dpr){cv.width=w*dpr;cv.height=h*dpr;}
+  if(ctxcv.width!==w*dpr||ctxcv.height!==h*dpr){ctxcv.width=w*dpr;ctxcv.height=h*dpr;}
   ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  cctx.setTransform(dpr,0,0,dpr,0,0); cctx.clearRect(0,0,w,h);
+  const cim=ctxImgs[ctxOn];
+  if(cim && cim.complete && cim.naturalWidth && CTX){
+    const [x0,y0]=toScreen(CTX.west,CTX.north), [x1,y1]=toScreen(CTX.east,CTX.south);
+    cctx.globalAlpha=.55; cctx.drawImage(cim,x0,y0,x1-x0,y1-y0); cctx.globalAlpha=1;
+  }
 
   const span=W/k; let step=STEPS[STEPS.length-1];
   for(const s of STEPS){ if(span/s>=4&&span/s<=12){step=s;break;} }
