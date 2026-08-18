@@ -28,7 +28,10 @@ dates.*
 | Reads | Windowed `WarpedVRT` reads straight out of remote COGs — no full-granule downloads |
 | Index | NBR = (B08 − B12)/(B08 + B12); dNBR pre − post; RdNBR relativised for mixed fuel |
 | Severity | Key & Benson (2006) FIREMON classes — **to be validated against EMSR894, not asserted** |
-| Climbing data | OpenStreetMap via Overpass (ODbL), ~1,150 features |
+| Climbing data | [Boolder](https://github.com/boolder-org/boolder-data) (CC BY 4.0), 17,605 problems in the area |
+| Land cover | IGN BD Forêt V2, RPG farmland, ancient woodland, historic aerial (Etalab 2.0) |
+| Weather | ERA5 via Open-Meteo; Fire Weather Index computed here, not downloaded |
+| Atmosphere | Sentinel-5P aerosol index, CO and layer height |
 
 ### The bi-temporal pair
 
@@ -67,20 +70,34 @@ This is the well-known "scene cloud describes the granule, not your AOI" problem
 edge on it: the failure is not that the metric is coarse, but that it is **inverted** — the
 emptiest scenes look like the cleanest ones.
 
-### Why OpenStreetMap and not a climbing app
+### Why Boolder, and not a climbing app's own data
 
-OSM's Fontainebleau coverage carries individual problem start points with Font grades, circuit
-colour and circuit number — and, importantly, the **`ref:bleau.info` cross-reference is already
-in OSM**. The join key comes for free under an open licence, so nothing needs scraping and
-nothing with unclear terms ends up in a public repo.
+OpenStreetMap was the first source, and it failed for a specific reason recorded as F3: its
+724 problem-level features sat in just three locations, all of them unburned. "No circuits
+burned" would have described OSM's mapping effort, not the fire.
+
+[Boolder](https://github.com/boolder-org/boolder-data) publishes the database behind its
+Fontainebleau apps as SQLite under **CC BY 4.0** — 19,137 problems with grade, circuit colour
+and circuit number, covering the burned sectors. Not UKC or 27 Crags: their terms prohibit
+scraping, and a paid subscription grants access rather than redistribution rights.
 
 ## Usage
 
 ```bash
 uv sync
-uv run python run.py climbing          # OSM features -> data/vectors/climbing.geojson
+uv run python run.py probe             # measure what each candidate scene actually contains
 uv run python run.py scenes --pair     # pull the pre/post pair onto the grid
 uv run python run.py dnbr              # indices, severity, hectares, renders
+uv run python run.py vectors           # IGN land cover + OSM paths
+uv run python run.py forest            # severity by fuel type; farmland contamination
+uv run python run.py problems          # per-problem and per-circuit severity
+uv run python run.py quicklooks        # every satellite pass as a frame series
+
+uv run python analyse_weather.py       # Fire Weather Index, 1940-2026
+uv run python analyse_drivers.py       # what predicts severity (answer: nothing that transfers)
+uv run python analyse_plume.py         # Sentinel-5P smoke detection
+uv run python export_web.py            # georeferenced layers for the viewer
+uv run python build_page.py --full     # build the site
 ```
 
 `data/` is gitignored.
@@ -107,30 +124,36 @@ uv run python run.py dnbr              # indices, severity, hectares, renders
 Grid, COG-reading and STAC-search code is adapted from [`eo-agent`](../eo-agent), vendored
 rather than imported so this repo stands alone.
 
-Data: Copernicus Sentinel-2 (ESA, free and open). OpenStreetMap contributors (ODbL).
+Every data source, with licence and a browsable link, is listed in
+[`DATA_SOURCES.md`](DATA_SOURCES.md).
 
-## Results so far
+## Results
 
-Two burn scars are cleanly resolved and match the reported two-sector fire: a large one over
-Trois Pignons / Noisy-sur-École, a smaller one north-east at the Faisanderie.
+**1,153 of 17,605 bouldering problems** sit at moderate-low severity or worse. Rocher du
+Général's yellow circuit and Rocher Guichot's orange are 100% burned; every Apremont sector is
+untouched.
 
-**27 named climbing features** at moderate-low severity or worse — 17 crags, 10 boulders.
-Worst affected: Long Boyau (dNBR 0.69), Jean des Vignes (0.66), Rocher du Potala (0.55),
-Rocher du Général (0.52), J.A. Martin (0.50). Roche aux Sabots and La Ségognole are in unburned
-forest on the western edge.
+**994 ha of forest** burned at dNBR ≥ 0.27. The ≥ 0.10 figure of 3,711 ha is **half farmland
+harvest** and should not be quoted — see F2.
 
-Burned area: **1,136 ha** at dNBR ≥ 0.27, against EMS's reported ~2,000 ha. The ≥0.10 figure
-(3,711 ha) is contaminated by agricultural harvest and should not be quoted — see `FINDINGS.md`
-F2.
+**The two days this fire burned rank 1st and 2nd for fire weather in the entire 1940–2026
+record.** Summer 2026 was the most extreme fire-weather summer of the 87 on record.
 
-**A limitation that bounds the headline claim:** OSM's problem-level detail (the 724 features
-carrying Font grades and circuit membership) exists in only three locations, all of them
-unburned. The per-circuit answer therefore cannot be produced for the burned sectors from OSM
-alone — see `FINDINGS.md` F3.
+**Nothing predicts severity within the fire.** Terrain, fuel and access give a random-CV R² of
++0.392 and a spatially blocked R² of −0.185 — worse than predicting the mean. The random score
+was measuring spatial autocorrelation.
 
-See [`FINDINGS.md`](FINDINGS.md) for the measured results log, including two self-corrections.
+**Sentinel-5P detected the plume** 18 km west of the fire, matching the wind direction to 25°.
+
+See [`FINDINGS.md`](FINDINGS.md) for the full log — ten entries, five of which correct earlier
+claims made in this repo.
 
 ## Status
 
-Early. Pipeline built end to end; severity numbers not yet validated against EMSR894, and area
-totals not yet restricted to forest.
+Working end to end, with an interactive map at
+**[edcrossing.github.io/bleau-fire](https://edcrossing.github.io/bleau-fire/)**.
+
+Open: severity classes are not yet validated against the EMSR894 expert grading; the
+substrate-versus-severity question in F5 needs soil-robust indices (MIRBI, BAIS2) which the
+widened band set now supports but which have not been run; and harvest is excluded by a parcel
+lookup rather than by a classifier.
