@@ -18,7 +18,7 @@ under Licence Ouverte / Etalab 2.0. The layers that matter here:
     ONF.FORETS_PUBLIQUES            state-managed forest boundaries
 
 ⚠️ **WFS pagination is not optional.** The service caps a single response, so a naive request
-silently returns the first page and looks like a complete answer — a whole class of "why is my
+silently returns the first page and looks like a complete answer — a whole class of "why is the
 layer clipped" bugs. `fetch_layer` pages with `startIndex` until a short page arrives.
 
 ⚠️ **Axis order.** In WFS 2.0 with `urn:ogc:def:crs:EPSG::4326`, the BBOX is

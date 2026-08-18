@@ -83,7 +83,7 @@ but that is a hypothesis, and settling it needs the EMSR894 vectors. Do not pres
 
 ## F5 — Burn severity by fuel type, and a refuted prediction about RdNBR
 
-**Refuted, my own stated hypothesis.** BD Forêt V2 supplies species polygons for the whole
+**Prediction refuted.** BD Forêt V2 supplies species polygons for the whole
 massif, so the fuel-bias argument could be measured rather than asserted. Restricted to inside
 the fire footprint:
 
@@ -100,9 +100,9 @@ By species: beech is the least affected closed forest (47.2% burned, dNBR 0.256)
 ecologically sensible — moist, deeply shaded, little understory fuel. Scots pine is the single
 largest burned fuel at 604 ha.
 
-**What I predicted, in `burn.py` and in conversation:** dNBR being an absolute difference, it
-should read *low* over sparse fuel like heath (less to lose) and *high* over dense closed pine,
-and RdNBR should compress that gap.
+**The prediction recorded in `burn.py`:** dNBR being an absolute difference, it should read
+*low* over sparse fuel like heath (less to lose) and *high* over dense closed pine, and RdNBR
+should compress that gap.
 
 **Both halves are wrong.** Heath reads *highest* by a wide margin, closed conifer *lowest*, and
 RdNBR **widens** the spread (0.917 vs 0.448) instead of closing it.
@@ -175,8 +175,8 @@ robust statement; a single problem's class is not.** More problems did not buy m
 
 ## F4 — Self-correction: the uncertainty flag was a burn detector
 
-**Refuted, my own first implementation.** Features are sampled over a window rather than a
-single pixel, because OSM positions are contributed and carry ~10–20 m of error (1–2 px at
+**Refuted — the first implementation of this flag.** Features are sampled over a window rather
+than a single pixel, because OSM positions are contributed and carry ~10–20 m of error (1–2 px at
 10 m). An `edge` flag marked a feature "uncertain" when the window's **min and max** fell in
 different severity classes.
 
@@ -227,13 +227,13 @@ Wadoux et al. (2021) is worth reading straight afterwards: the blocked score is 
 "the true accuracy" either, it answers a different question — *how well does this transfer to
 unseen ground?* — and here the answer is: it does not.
 
-### The importances are consequently void, and my own docstring said so
+### The importances are consequently void
 
-`drivers.py` warns that "permutation importance on a model that does not generalise measures
-nothing." That caveat applies to this run. For the record the ranking was elevation (0.241),
-fuel (0.172), distance to track (0.061), then aspect, pre-fire NBR and slope near zero — **but
-this describes how the model uses features to fail, not what drove the fire.** It should not be
-quoted as a driver ranking.
+`drivers.py` carries the warning that "permutation importance on a model that does not
+generalise measures nothing". That caveat applies to this run. For the record the ranking was
+elevation (0.241), fuel (0.172), distance to track (0.061), then aspect, pre-fire NBR and
+slope near zero — **but this describes how the model uses features to fail, not what drove the
+fire.** It should not be quoted as a driver ranking.
 
 ### What can honestly be said
 
@@ -305,8 +305,9 @@ Measured spread, using a 13 July Sentinel-2 scene (during the fire) against 20 J
 - Main sector (971 ha): growth centroid displaced 1,127 m toward **292°**
 - Angular difference from wind: **81°**
 
-**Refuted — my own first version of this analysis.** Pooling both fire sectors into one centroid
-gave a 3,779 m shift toward 080°, which I nearly reported. That is an artefact: the fire had
+**Refuted — the first version of this analysis.** Pooling both fire sectors into one centroid
+gave a 3,779 m shift toward 080°, which very nearly went into this log as a result. It is an
+artefact: the fire had
 **two sectors ~8 km apart**, and when one grows later the combined centroid lurches toward it and
 reads as an eight-kilometre "spread". Two separate fires are not one object with a centroid. Now
 computed per connected component; the second sector (426 ha) has too little early-vs-late split
@@ -353,8 +354,8 @@ resolve.
 
 ### Why this matters for F7
 
-F7 tried to confirm wind direction from burn-scar growth and failed (81° discrepancy), and I
-argued the test was untrustworthy because **suppression targets the downwind head of a fire** —
+F7 tried to confirm wind direction from burn-scar growth and failed (81° discrepancy), on the
+argument that the test was untrustworthy because **suppression targets the downwind head of a fire** —
 aircraft and crews attack exactly where the wind is pushing it. The plume cannot be confounded
 that way: nobody was water-bombing the smoke. So the atmospheric evidence supports downwind
 transport where the ground evidence could not, and the disagreement between them is itself the
@@ -366,13 +367,14 @@ On the ignition day the peak anomalies are +0.30 (AI) and +0.012 (CO), both >100
 i.e. background. Sentinel-5P crosses at ~12:00 UTC and the fire ignited that day and made its
 run into the afternoon and the 13th. **The satellite passed before there was much to see.**
 
-### Refuted — my own orbit selection silently deleted the ignition day
+### Refuted — the orbit selection silently deleted the ignition day
 
 The first version picked the single orbit whose sensing window was closest to local noon. TROPOMI
 flies 14 orbits a day and each swath is a strip: the nearest-in-time orbit can miss the region
 entirely, returning an all-NaN array that is **indistinguishable from "the instrument saw
-nothing"**. It reported 0% coverage for 10 and 12 July — including the ignition day — and I
-nearly wrote that up as absence of signal. Fixed by trying candidates in time order and keeping
+nothing"**. It reported 0% coverage for 10 and 12 July — including the ignition day —
+which would have entered this log as absence of signal. Fixed by trying candidates in time order
+and keeping
 the first with real coverage. All six days now return 100% (or near) coverage.
 
 General form: **an empty result from a data-access layer must be distinguishable from an empty
@@ -433,7 +435,7 @@ weak surface one without needing the plume to be decoupled at all, and it is sup
 ERA5 field rather than assumed.
 
 So F8's surface/column discrepancy is resolved, but by dilution rather than by lofting — the
-opposite mechanism to the one I proposed.
+opposite mechanism to the one proposed.
 
 ### What would overturn this
 
@@ -447,14 +449,13 @@ opposite mechanism to the one I proposed.
 
 ---
 
-## F10 — The black quicklook frames are empty swath, not dark ground. The renderer was lying
+## F10 — The black quicklook frames are empty swath, not dark ground
 
-**Holds, exactly as hypothesised, and with no ambiguous middle case.**
+**Holds, with no ambiguous middle case.**
 
 Several frames in the scrubbable series render as a black rectangle with a small lit corner.
-The readings on the table were night-time acquisition or corrupt data. The proposed explanation
-was nodata from a partial orbit swath, mapped to black by `np.nan_to_num(rgb)` in
-`cmd_quicklooks`.
+Three explanations were possible: night-time acquisition, corrupt data, or nodata from a partial
+orbit swath being mapped to black by `np.nan_to_num(rgb)` in `cmd_quicklooks`.
 
 Checked on the frame that prompted it — **2026-06-06** (`S2B_31UDP_20260606_0_L2A`, advertised
 99.8% cloud; there is no 2026-08-06 acquisition, the date was transposed). SCL and RGB re-read
@@ -474,7 +475,7 @@ mistaken for emptiness, or the reverse — the black region is entirely outside 
 footprint. The lit corner is the only observed sliver, and it is cloud: median reflectance
 **0.67** across 21,196 pixels, which is what the 99.8% figure is computed over.
 
-**Neither reading on the table was right.** It is not night-time — Sentinel-2 images on the
+**The first two explanations are wrong.** It is not night-time — Sentinel-2 images on the
 descending daylight node and never acquires optical data in darkness — and it is not corrupt;
 the data is exactly as delivered. The renderer chose black for "nothing here", and black
 already meant "very dark ground".
