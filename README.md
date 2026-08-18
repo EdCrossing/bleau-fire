@@ -1,5 +1,7 @@
 # bleau-fire
 
+**New here?** [Where every layer comes from](DATA_SOURCES.md) — a plain-language guide to the data, with links you can click and browse. No code required.
+
 Burn severity of the **July 2026 Fontainebleau fire**, mapped onto the bouldering circuits it
 crossed.
 
